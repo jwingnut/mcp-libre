@@ -870,6 +870,413 @@ class UNOBridge:
             logger.error(f"Failed to get context around cursor: {e}")
             return {"success": False, "error": str(e)}
 
+    # ============== Text Selection Tools ==============
+
+    def select_paragraph(self, n: int, doc: Any = None) -> Dict[str, Any]:
+        """
+        Select entire paragraph n (1-indexed).
+
+        Args:
+            n: Paragraph number (1-indexed)
+            doc: Document to work with (None for active document)
+
+        Returns:
+            Result dictionary with selected text content
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Paragraph selection not supported for {doc_type} documents"}
+
+            if n < 1:
+                return {"success": False, "error": "Paragraph number must be >= 1"}
+
+            # Find the paragraph
+            text = doc.getText()
+            enum = text.createEnumeration()
+
+            current = 0
+            target_para = None
+            while enum.hasMoreElements():
+                para = enum.nextElement()
+                if hasattr(para, 'supportsService') and para.supportsService("com.sun.star.text.Paragraph"):
+                    current += 1
+                    if current == n:
+                        target_para = para
+                        break
+
+            if target_para is None:
+                return {"success": False, "error": f"Paragraph {n} out of range. Valid range: 1-{current}"}
+
+            # Get the view cursor and select the paragraph
+            controller = doc.getCurrentController()
+            view_cursor = controller.getViewCursor()
+
+            # Move to paragraph start
+            para_start = target_para.getStart()
+            view_cursor.gotoRange(para_start, False)
+
+            # Extend selection to paragraph end
+            para_end = target_para.getEnd()
+            view_cursor.gotoRange(para_end, True)
+
+            # Get selected text
+            selected_text = target_para.getString() if hasattr(target_para, 'getString') else ""
+
+            logger.info(f"Selected paragraph {n}")
+            return {
+                "success": True,
+                "selected_text": selected_text,
+                "paragraph": n
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to select paragraph: {e}")
+            return {"success": False, "error": str(e)}
+
+    def select_text_range(self, start: int, end: int, doc: Any = None) -> Dict[str, Any]:
+        """
+        Select text from start to end character positions (0-indexed).
+
+        Args:
+            start: Starting character position (0-indexed)
+            end: Ending character position (exclusive)
+            doc: Document to work with (None for active document)
+
+        Returns:
+            Result dictionary with selected text
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Text range selection not supported for {doc_type} documents"}
+
+            if start < 0:
+                return {"success": False, "error": "Start position must be >= 0"}
+            if end < start:
+                return {"success": False, "error": "End position must be >= start position"}
+
+            text = doc.getText()
+            controller = doc.getCurrentController()
+            view_cursor = controller.getViewCursor()
+
+            # Create text cursor for selection
+            text_cursor = text.createTextCursor()
+            text_cursor.gotoStart(False)
+
+            # Move to start position
+            if start > 0:
+                text_cursor.goRight(start, False)
+
+            # Store start position
+            start_range = text.createTextCursor()
+            start_range.gotoRange(text_cursor, False)
+
+            # Move to end position (selecting)
+            length = end - start
+            if length > 0:
+                text_cursor.goRight(length, True)
+
+            # Get selected text
+            selected_text = text_cursor.getString()
+
+            # Move view cursor to match selection
+            view_cursor.gotoRange(start_range, False)
+            view_cursor.gotoRange(text_cursor, True)
+
+            logger.info(f"Selected text range {start}-{end}")
+            return {
+                "success": True,
+                "selected_text": selected_text,
+                "start": start,
+                "end": end,
+                "length": len(selected_text)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to select text range: {e}")
+            return {"success": False, "error": str(e)}
+
+    def delete_selection(self, doc: Any = None) -> Dict[str, Any]:
+        """
+        Delete currently selected text.
+
+        Args:
+            doc: Document to work with (None for active document)
+
+        Returns:
+            Result dictionary with deleted text content
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Delete selection not supported for {doc_type} documents"}
+
+            # Get current selection
+            controller = doc.getCurrentController()
+            selection = controller.getSelection()
+
+            if selection.getCount() == 0:
+                return {"success": False, "error": "No text selected"}
+
+            # Get the selected text range
+            text_range = selection.getByIndex(0)
+
+            # Get the text before deleting
+            deleted_text = text_range.getString()
+
+            # Delete by setting empty string
+            text_range.setString("")
+
+            logger.info(f"Deleted selection: {len(deleted_text)} characters")
+            return {
+                "success": True,
+                "deleted_text": deleted_text,
+                "length": len(deleted_text)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to delete selection: {e}")
+            return {"success": False, "error": str(e)}
+
+    def replace_selection(self, text: str, doc: Any = None) -> Dict[str, Any]:
+        """
+        Replace currently selected text with new text.
+
+        Args:
+            text: New text to replace selection with
+            doc: Document to work with (None for active document)
+
+        Returns:
+            Result dictionary with old and new text
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Replace selection not supported for {doc_type} documents"}
+
+            # Get current selection
+            controller = doc.getCurrentController()
+            selection = controller.getSelection()
+
+            if selection.getCount() == 0:
+                return {"success": False, "error": "No text selected"}
+
+            # Get the selected text range
+            text_range = selection.getByIndex(0)
+
+            # Get the old text
+            old_text = text_range.getString()
+
+            # Replace with new text
+            text_range.setString(text)
+
+            logger.info(f"Replaced selection: {len(old_text)} -> {len(text)} characters")
+            return {
+                "success": True,
+                "old_text": old_text,
+                "new_text": text,
+                "old_length": len(old_text),
+                "new_length": len(text)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to replace selection: {e}")
+            return {"success": False, "error": str(e)}
+
+    # ============== Search and Replace Tools ==============
+
+    def find_text(self, query: str, doc: Any = None) -> Dict[str, Any]:
+        """
+        Find all occurrences of query string in the document.
+
+        Args:
+            query: String to search for
+            doc: Document to search in (None for active document)
+
+        Returns:
+            Result dictionary with list of matches and their positions
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Text search not supported for {doc_type} documents"}
+
+            # Create search descriptor
+            search = doc.createSearchDescriptor()
+            search.SearchString = query
+
+            # Find all occurrences
+            found = doc.findAll(search)
+
+            matches = []
+            if found and found.getCount() > 0:
+                text = doc.getText()
+
+                for i in range(found.getCount()):
+                    match_range = found.getByIndex(i)
+
+                    # Calculate character position from start
+                    text_cursor = text.createTextCursor()
+                    text_cursor.gotoStart(False)
+                    text_cursor.gotoRange(match_range.getStart(), True)
+                    position = len(text_cursor.getString())
+
+                    # Get matched text
+                    matched_text = match_range.getString()
+
+                    matches.append({
+                        "position": position,
+                        "text": matched_text
+                    })
+
+            logger.info(f"Found {len(matches)} occurrences of '{query}'")
+            return {
+                "success": True,
+                "matches": matches,
+                "count": len(matches),
+                "query": query
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to find text: {e}")
+            return {"success": False, "error": str(e)}
+
+    def find_and_replace(self, old: str, new: str, doc: Any = None) -> Dict[str, Any]:
+        """
+        Find and replace the first occurrence of old with new.
+
+        Args:
+            old: String to find
+            new: String to replace with
+            doc: Document to modify (None for active document)
+
+        Returns:
+            Result dictionary with replacement status and position
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Find and replace not supported for {doc_type} documents"}
+
+            # Create search descriptor
+            search = doc.createSearchDescriptor()
+            search.SearchString = old
+
+            # Find first occurrence
+            found = doc.findFirst(search)
+
+            if found:
+                # Calculate position before replacement
+                text = doc.getText()
+                text_cursor = text.createTextCursor()
+                text_cursor.gotoStart(False)
+                text_cursor.gotoRange(found.getStart(), True)
+                position = len(text_cursor.getString())
+
+                # Replace the text
+                found.setString(new)
+
+                logger.info(f"Replaced first occurrence of '{old}' with '{new}' at position {position}")
+                return {
+                    "success": True,
+                    "replaced": True,
+                    "position": position,
+                    "old": old,
+                    "new": new
+                }
+            else:
+                logger.info(f"No occurrence of '{old}' found")
+                return {
+                    "success": True,
+                    "replaced": False,
+                    "old": old,
+                    "new": new
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to find and replace: {e}")
+            return {"success": False, "error": str(e)}
+
+    def find_and_replace_all(self, old: str, new: str, doc: Any = None) -> Dict[str, Any]:
+        """
+        Find and replace all occurrences of old with new.
+
+        Args:
+            old: String to find
+            new: String to replace with
+            doc: Document to modify (None for active document)
+
+        Returns:
+            Result dictionary with count of replacements
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Find and replace all not supported for {doc_type} documents"}
+
+            # Create replace descriptor
+            replace = doc.createReplaceDescriptor()
+            replace.SearchString = old
+            replace.ReplaceString = new
+
+            # Replace all occurrences
+            count = doc.replaceAll(replace)
+
+            logger.info(f"Replaced {count} occurrences of '{old}' with '{new}'")
+            return {
+                "success": True,
+                "count": count,
+                "old": old,
+                "new": new
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to find and replace all: {e}")
+            return {"success": False, "error": str(e)}
+
     def _get_document_type(self, doc: Any) -> str:
         """Determine document type"""
         # Try isinstance first if types are available
