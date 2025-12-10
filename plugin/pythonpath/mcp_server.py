@@ -193,6 +193,227 @@ class LibreOfficeMCPServer:
             "handler": self.add_comment_live
         }
 
+        # Enhanced Editing Tools - Document Structure
+        self.tools["get_paragraph_count_live"] = {
+            "description": "Get the total number of paragraphs in the document",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.get_paragraph_count_live
+        }
+
+        self.tools["get_document_outline_live"] = {
+            "description": "Get document outline with headings, paragraph numbers, and levels",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.get_document_outline_live
+        }
+
+        self.tools["get_paragraph_live"] = {
+            "description": "Get content of a specific paragraph by number (1-indexed)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n": {
+                        "type": "integer",
+                        "description": "Paragraph number (1-indexed)"
+                    }
+                },
+                "required": ["n"]
+            },
+            "handler": self.get_paragraph_live
+        }
+
+        self.tools["get_paragraphs_range_live"] = {
+            "description": "Get content of paragraphs in a range (inclusive, 1-indexed)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start": {
+                        "type": "integer",
+                        "description": "Starting paragraph number (1-indexed)"
+                    },
+                    "end": {
+                        "type": "integer",
+                        "description": "Ending paragraph number (inclusive)"
+                    }
+                },
+                "required": ["start", "end"]
+            },
+            "handler": self.get_paragraphs_range_live
+        }
+
+        # Enhanced Editing Tools - Cursor Navigation
+        self.tools["goto_paragraph_live"] = {
+            "description": "Move view cursor to the beginning of paragraph n",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n": {
+                        "type": "integer",
+                        "description": "Paragraph number (1-indexed)"
+                    }
+                },
+                "required": ["n"]
+            },
+            "handler": self.goto_paragraph_live
+        }
+
+        self.tools["goto_position_live"] = {
+            "description": "Move view cursor to a specific character position",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "char_pos": {
+                        "type": "integer",
+                        "description": "Character position (0-indexed)"
+                    }
+                },
+                "required": ["char_pos"]
+            },
+            "handler": self.goto_position_live
+        }
+
+        self.tools["get_cursor_position_live"] = {
+            "description": "Get current cursor character position and paragraph number",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.get_cursor_position_live
+        }
+
+        self.tools["get_context_around_cursor_live"] = {
+            "description": "Get text context around the current cursor position",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chars": {
+                        "type": "integer",
+                        "description": "Number of characters to get before and after cursor (default: 100)",
+                        "default": 100
+                    }
+                }
+            },
+            "handler": self.get_context_around_cursor_live
+        }
+
+        # Enhanced Editing Tools - Text Selection
+        self.tools["select_paragraph_live"] = {
+            "description": "Select entire paragraph n (1-indexed)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n": {
+                        "type": "integer",
+                        "description": "Paragraph number (1-indexed)"
+                    }
+                },
+                "required": ["n"]
+            },
+            "handler": self.select_paragraph_live
+        }
+
+        self.tools["select_text_range_live"] = {
+            "description": "Select text from start to end character positions (0-indexed)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start": {
+                        "type": "integer",
+                        "description": "Starting character position (0-indexed)"
+                    },
+                    "end": {
+                        "type": "integer",
+                        "description": "Ending character position (exclusive)"
+                    }
+                },
+                "required": ["start", "end"]
+            },
+            "handler": self.select_text_range_live
+        }
+
+        self.tools["delete_selection_live"] = {
+            "description": "Delete currently selected text",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.delete_selection_live
+        }
+
+        self.tools["replace_selection_live"] = {
+            "description": "Replace currently selected text with new text",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "New text to replace selection with"
+                    }
+                },
+                "required": ["text"]
+            },
+            "handler": self.replace_selection_live
+        }
+
+        # Enhanced Editing Tools - Search and Replace
+        self.tools["find_text_live"] = {
+            "description": "Find all occurrences of query string in the document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "String to search for"
+                    }
+                },
+                "required": ["query"]
+            },
+            "handler": self.find_text_live
+        }
+
+        self.tools["find_and_replace_live"] = {
+            "description": "Find and replace the first occurrence",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old": {
+                        "type": "string",
+                        "description": "String to find"
+                    },
+                    "new": {
+                        "type": "string",
+                        "description": "String to replace with"
+                    }
+                },
+                "required": ["old", "new"]
+            },
+            "handler": self.find_and_replace_live
+        }
+
+        self.tools["find_and_replace_all_live"] = {
+            "description": "Find and replace all occurrences",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old": {
+                        "type": "string",
+                        "description": "String to find"
+                    },
+                    "new": {
+                        "type": "string",
+                        "description": "String to replace with"
+                    }
+                },
+                "required": ["old", "new"]
+            },
+            "handler": self.find_and_replace_all_live
+        }
+
         logger.info(f"Registered {len(self.tools)} MCP tools")
     
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -320,6 +541,74 @@ class LibreOfficeMCPServer:
     def add_comment_live(self, text: str, author: str = "Claude") -> Dict[str, Any]:
         """Add a comment at the current cursor position"""
         return self.uno_bridge.add_comment(text, author)
+
+    # Enhanced Editing Tools - Document Structure Handlers
+
+    def get_paragraph_count_live(self) -> Dict[str, Any]:
+        """Get the total number of paragraphs in the document"""
+        return self.uno_bridge.get_paragraph_count()
+
+    def get_document_outline_live(self) -> Dict[str, Any]:
+        """Get document outline with headings, paragraph numbers, and levels"""
+        return self.uno_bridge.get_document_outline()
+
+    def get_paragraph_live(self, n: int) -> Dict[str, Any]:
+        """Get content of a specific paragraph by number (1-indexed)"""
+        return self.uno_bridge.get_paragraph(n)
+
+    def get_paragraphs_range_live(self, start: int, end: int) -> Dict[str, Any]:
+        """Get content of paragraphs in a range (inclusive, 1-indexed)"""
+        return self.uno_bridge.get_paragraphs_range(start, end)
+
+    # Enhanced Editing Tools - Cursor Navigation Handlers
+
+    def goto_paragraph_live(self, n: int) -> Dict[str, Any]:
+        """Move view cursor to the beginning of paragraph n"""
+        return self.uno_bridge.goto_paragraph(n)
+
+    def goto_position_live(self, char_pos: int) -> Dict[str, Any]:
+        """Move view cursor to a specific character position"""
+        return self.uno_bridge.goto_position(char_pos)
+
+    def get_cursor_position_live(self) -> Dict[str, Any]:
+        """Get current cursor character position and paragraph number"""
+        return self.uno_bridge.get_cursor_position()
+
+    def get_context_around_cursor_live(self, chars: int = 100) -> Dict[str, Any]:
+        """Get text context around the current cursor position"""
+        return self.uno_bridge.get_context_around_cursor(chars)
+
+    # Enhanced Editing Tools - Text Selection Handlers
+
+    def select_paragraph_live(self, n: int) -> Dict[str, Any]:
+        """Select entire paragraph n (1-indexed)"""
+        return self.uno_bridge.select_paragraph(n)
+
+    def select_text_range_live(self, start: int, end: int) -> Dict[str, Any]:
+        """Select text from start to end character positions (0-indexed)"""
+        return self.uno_bridge.select_text_range(start, end)
+
+    def delete_selection_live(self) -> Dict[str, Any]:
+        """Delete currently selected text"""
+        return self.uno_bridge.delete_selection()
+
+    def replace_selection_live(self, text: str) -> Dict[str, Any]:
+        """Replace currently selected text with new text"""
+        return self.uno_bridge.replace_selection(text)
+
+    # Enhanced Editing Tools - Search and Replace Handlers
+
+    def find_text_live(self, query: str) -> Dict[str, Any]:
+        """Find all occurrences of query string in the document"""
+        return self.uno_bridge.find_text(query)
+
+    def find_and_replace_live(self, old: str, new: str) -> Dict[str, Any]:
+        """Find and replace the first occurrence"""
+        return self.uno_bridge.find_and_replace(old, new)
+
+    def find_and_replace_all_live(self, old: str, new: str) -> Dict[str, Any]:
+        """Find and replace all occurrences"""
+        return self.uno_bridge.find_and_replace_all(old, new)
 
 
 # Global instance

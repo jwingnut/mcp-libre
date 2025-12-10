@@ -136,6 +136,248 @@ def test_get_text_content():
     return True
 
 
+# Enhanced Editing Tools Tests - Document Structure
+
+def test_get_paragraph_count():
+    """Test getting paragraph count"""
+    print("Testing get_paragraph_count_live tool...")
+    result = make_request("/tools/get_paragraph_count_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        print(f"  ✓ Paragraph count: {result.get('count', 0)}")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_get_document_outline():
+    """Test getting document outline"""
+    print("Testing get_document_outline_live tool...")
+    result = make_request("/tools/get_document_outline_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        outline_count = len(result.get("outline", []))
+        print(f"  ✓ Found {outline_count} headings in outline")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_get_paragraph():
+    """Test getting specific paragraph"""
+    print("Testing get_paragraph_live tool...")
+    result = make_request("/tools/get_paragraph_live", method="POST", data={"n": 1})
+
+    if "error" in result:
+        print(f"  ⚠ Error (may be out of range): {result['error']}")
+    elif result.get("success"):
+        content = result.get("content", "")[:50]
+        print(f"  ✓ Got paragraph 1: {content}...")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_get_paragraphs_range():
+    """Test getting paragraph range"""
+    print("Testing get_paragraphs_range_live tool...")
+    result = make_request("/tools/get_paragraphs_range_live", method="POST", data={"start": 1, "end": 2})
+
+    if "error" in result:
+        print(f"  ⚠ Error (may be out of range): {result['error']}")
+    elif result.get("success"):
+        count = result.get("count", 0)
+        print(f"  ✓ Got {count} paragraphs in range")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+# Enhanced Editing Tools Tests - Cursor Navigation
+
+def test_goto_paragraph():
+    """Test cursor navigation to paragraph"""
+    print("Testing goto_paragraph_live tool...")
+    result = make_request("/tools/goto_paragraph_live", method="POST", data={"n": 1})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        print(f"  ✓ Moved cursor to paragraph {result.get('paragraph', 1)}")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_goto_position():
+    """Test cursor navigation to position"""
+    print("Testing goto_position_live tool...")
+    result = make_request("/tools/goto_position_live", method="POST", data={"char_pos": 0})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        print(f"  ✓ Moved cursor to position {result.get('position', 0)}")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_get_cursor_position():
+    """Test getting cursor position"""
+    print("Testing get_cursor_position_live tool...")
+    result = make_request("/tools/get_cursor_position_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        pos = result.get("position", 0)
+        para = result.get("paragraph", 0)
+        print(f"  ✓ Cursor at position {pos}, paragraph {para}")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_get_context_around_cursor():
+    """Test getting context around cursor"""
+    print("Testing get_context_around_cursor_live tool...")
+    result = make_request("/tools/get_context_around_cursor_live", method="POST", data={"chars": 50})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        before_len = len(result.get("before", ""))
+        after_len = len(result.get("after", ""))
+        print(f"  ✓ Got context: {before_len} chars before, {after_len} chars after")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+# Enhanced Editing Tools Tests - Text Selection
+
+def test_select_paragraph():
+    """Test selecting paragraph"""
+    print("Testing select_paragraph_live tool...")
+    result = make_request("/tools/select_paragraph_live", method="POST", data={"n": 1})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        text_len = len(result.get("selected_text", ""))
+        print(f"  ✓ Selected paragraph 1 ({text_len} chars)")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_select_text_range():
+    """Test selecting text range"""
+    print("Testing select_text_range_live tool...")
+    result = make_request("/tools/select_text_range_live", method="POST", data={"start": 0, "end": 10})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        text_len = len(result.get("selected_text", ""))
+        print(f"  ✓ Selected range 0-10 ({text_len} chars)")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_delete_selection():
+    """Test deleting selection"""
+    print("Testing delete_selection_live tool...")
+    # First select some text
+    make_request("/tools/select_text_range_live", method="POST", data={"start": 0, "end": 5})
+    # Then try to delete it
+    result = make_request("/tools/delete_selection_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error (may need selection): {result['error']}")
+    elif result.get("success"):
+        deleted_len = len(result.get("deleted_text", ""))
+        print(f"  ✓ Deleted selection ({deleted_len} chars)")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_replace_selection():
+    """Test replacing selection"""
+    print("Testing replace_selection_live tool...")
+    # First select some text
+    make_request("/tools/select_text_range_live", method="POST", data={"start": 0, "end": 5})
+    # Then try to replace it
+    result = make_request("/tools/replace_selection_live", method="POST", data={"text": "TEST"})
+
+    if "error" in result:
+        print(f"  ⚠ Error (may need selection): {result['error']}")
+    elif result.get("success"):
+        old_len = len(result.get("old_text", ""))
+        new_len = len(result.get("new_text", ""))
+        print(f"  ✓ Replaced selection ({old_len} -> {new_len} chars)")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+# Enhanced Editing Tools Tests - Search and Replace
+
+def test_find_text():
+    """Test finding text"""
+    print("Testing find_text_live tool...")
+    result = make_request("/tools/find_text_live", method="POST", data={"query": "test"})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        count = result.get("count", 0)
+        print(f"  ✓ Found {count} occurrences of 'test'")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_find_and_replace():
+    """Test find and replace first occurrence"""
+    print("Testing find_and_replace_live tool...")
+    result = make_request("/tools/find_and_replace_live", method="POST", data={"old": "test", "new": "TEST"})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        replaced = result.get("replaced", False)
+        if replaced:
+            print(f"  ✓ Replaced first occurrence at position {result.get('position', 0)}")
+        else:
+            print(f"  ✓ No occurrence found to replace")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_find_and_replace_all():
+    """Test find and replace all occurrences"""
+    print("Testing find_and_replace_all_live tool...")
+    result = make_request("/tools/find_and_replace_all_live", method="POST", data={"old": "TEST", "new": "test"})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        count = result.get("count", 0)
+        print(f"  ✓ Replaced {count} occurrences")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
 def run_all_tests():
     """Run all tests"""
     print("=" * 60)
@@ -166,6 +408,25 @@ def run_all_tests():
         test_get_document_info,
         test_insert_text,
         test_get_text_content,
+        # Enhanced Editing Tools - Document Structure
+        test_get_paragraph_count,
+        test_get_document_outline,
+        test_get_paragraph,
+        test_get_paragraphs_range,
+        # Enhanced Editing Tools - Cursor Navigation
+        test_goto_paragraph,
+        test_goto_position,
+        test_get_cursor_position,
+        test_get_context_around_cursor,
+        # Enhanced Editing Tools - Text Selection
+        test_select_paragraph,
+        test_select_text_range,
+        test_delete_selection,
+        test_replace_selection,
+        # Enhanced Editing Tools - Search and Replace
+        test_find_text,
+        test_find_and_replace,
+        test_find_and_replace_all,
     ]
 
     passed = 0
