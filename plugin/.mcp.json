@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "libreoffice": {
+      "type": "http",
+      "url": "http://localhost:8765"
+    }
+  }
+}

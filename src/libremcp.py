@@ -64,9 +64,22 @@ class SpreadsheetData(BaseModel):
 # Helper functions
 def _run_libreoffice_command(args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
     """Run a LibreOffice command with proper error handling"""
+    import os
+
     try:
-        # Try different common LibreOffice executable names
-        for executable in ['libreoffice', 'loffice', 'soffice']:
+        # First, check if LIBREOFFICE_PATH environment variable is set
+        libreoffice_path = os.environ.get('LIBREOFFICE_PATH')
+
+        executables_to_try = []
+
+        # If LIBREOFFICE_PATH is set, try it first
+        if libreoffice_path:
+            executables_to_try.append(libreoffice_path)
+
+        # Then try different common LibreOffice executable names
+        executables_to_try.extend(['libreoffice', 'loffice', 'soffice'])
+
+        for executable in executables_to_try:
             try:
                 cmd = [executable] + args
                 result = subprocess.run(
@@ -76,12 +89,15 @@ def _run_libreoffice_command(args: List[str], timeout: int = 30) -> subprocess.C
                     timeout=timeout,
                     check=False
                 )
-                if result.returncode == 0 or executable == 'soffice':  # soffice might work even if return code != 0
+                if result.returncode == 0 or 'soffice' in executable.lower():
                     return result
             except FileNotFoundError:
                 continue
-        
-        raise FileNotFoundError("LibreOffice executable not found. Please install LibreOffice.")
+
+        error_msg = "LibreOffice executable not found. Please install LibreOffice."
+        if libreoffice_path:
+            error_msg += f" (LIBREOFFICE_PATH is set to: {libreoffice_path})"
+        raise FileNotFoundError(error_msg)
     except subprocess.TimeoutExpired:
         raise TimeoutError(f"LibreOffice command timed out after {timeout} seconds")
 
@@ -133,28 +149,12 @@ def create_document(path: str, doc_type: str = "writer", content: str = "") -> D
     
     try:
         if doc_type == "writer" and content:
-            # For writer documents with content, create a simple text file first
-            # then convert to ODT format
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-            
-            try:
-                # Try to convert text to ODT
-                result = _run_libreoffice_command([
-                    '--headless',
-                    '--convert-to', 'odt',
-                    '--outdir', str(path_obj.parent),
-                    tmp_path
-                ])
-                
-                # Find the converted file and move it to the target location
-                tmp_stem = Path(tmp_path).stem
-                converted_file = path_obj.parent / f"{tmp_stem}.odt"
-                
-                if converted_file.exists():
-                    converted_file.rename(path_obj)
-                else:
+            # For writer documents with content, create ODT file directly
+            # This avoids LibreOffice conversion issues on Windows
+            _create_minimal_odt(path_obj, content)
+        else:
+            # For other document types or empty writer docs
+            if doc_type == "writer" and not content:
                     # If conversion failed, create a basic ODT file manually
                     # This is a minimal ODT structure
                     import zipfile
