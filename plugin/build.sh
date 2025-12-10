@@ -5,8 +5,10 @@
 
 set -e
 
-PLUGIN_DIR="/home/patrick/work/mcp/mcp-libre/plugin"
-BUILD_DIR="/home/patrick/work/mcp/mcp-libre/build"
+# Get script directory (works even if called from different location)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_DIR="$SCRIPT_DIR"
+BUILD_DIR="$SCRIPT_DIR/../build"
 EXTENSION_NAME="libreoffice-mcp-extension"
 VERSION="1.0.0"
 
@@ -28,11 +30,13 @@ zip -r "$BUILD_DIR/${EXTENSION_NAME}-${VERSION}.oxt" \
     META-INF/ \
     pythonpath/ \
     *.xml \
+    *.xcu \
     *.txt \
     -x "*.pyc" "*/__pycache__/*"
 
-# Create a symlink for easier access
-ln -sf "${EXTENSION_NAME}-${VERSION}.oxt" "$BUILD_DIR/${EXTENSION_NAME}.oxt"
+# Create a symlink for easier access (or copy if symlinks not supported)
+ln -sf "${EXTENSION_NAME}-${VERSION}.oxt" "$BUILD_DIR/${EXTENSION_NAME}.oxt" 2>/dev/null || \
+    cp "$BUILD_DIR/${EXTENSION_NAME}-${VERSION}.oxt" "$BUILD_DIR/${EXTENSION_NAME}.oxt"
 
 echo "✅ Extension built successfully!"
 echo "📁 Output: $BUILD_DIR/${EXTENSION_NAME}-${VERSION}.oxt"
