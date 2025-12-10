@@ -14,7 +14,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import socketserver
 
-from .mcp_server import get_mcp_server
+import mcp_server
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +25,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler for MCP API"""
     
     def __init__(self, *args, **kwargs):
-        self.mcp_server = get_mcp_server()
+        self.mcp_server = mcp_server.get_mcp_server()
         super().__init__(*args, **kwargs)
     
     def do_GET(self):
@@ -168,24 +168,23 @@ class AIInterface:
             if self.running:
                 logger.warning("Server is already running")
                 return
-            
-            # Create HTTP server
-            with socketserver.TCPServer(("", self.port), MCPRequestHandler) as server:
-                server.allow_reuse_address = True
-                self.server = server
-                self.running = True
-                
-                logger.info(f"Started MCP HTTP server on {self.host}:{self.port}")
-                
-                # Start server in background thread
-                self.server_thread = threading.Thread(
-                    target=self._run_server,
-                    daemon=True
-                )
-                self.server_thread.start()
-                
-                logger.info("MCP HTTP server started successfully")
-                
+
+            # Create HTTP server (without context manager so it stays alive)
+            self.server = socketserver.TCPServer(("", self.port), MCPRequestHandler)
+            self.server.allow_reuse_address = True
+            self.running = True
+
+            logger.info(f"Started MCP HTTP server on {self.host}:{self.port}")
+
+            # Start server in background thread
+            self.server_thread = threading.Thread(
+                target=self._run_server,
+                daemon=True
+            )
+            self.server_thread.start()
+
+            logger.info("MCP HTTP server started successfully")
+
         except Exception as e:
             logger.error(f"Failed to start HTTP server: {e}")
             self.running = False

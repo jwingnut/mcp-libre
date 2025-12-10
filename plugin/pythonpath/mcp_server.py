@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, Optional, List
-from .uno_bridge import UNOBridge
+import uno_bridge
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +21,7 @@ class LibreOfficeMCPServer:
     
     def __init__(self):
         """Initialize the MCP server"""
-        self.uno_bridge = UNOBridge()
+        self.uno_bridge = uno_bridge.UNOBridge()
         self.tools = {}
         self._register_tools()
         logger.info("LibreOffice MCP Server initialized")

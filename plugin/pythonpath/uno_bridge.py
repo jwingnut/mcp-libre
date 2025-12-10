@@ -8,18 +8,46 @@ enabling direct manipulation of LibreOffice documents.
 import uno
 import unohelper
 from com.sun.star.beans import PropertyValue
-from com.sun.star.text import XTextDocument
-from com.sun.star.sheet import XSpreadsheetDocument
-from com.sun.star.presentation import XPresentationDocument
-from com.sun.star.document import XDocumentEventListener
-from com.sun.star.awt import XActionListener
 from typing import Any, Optional, Dict, List
 import logging
 import traceback
 
+# Optional imports - these may not be available in all configurations
+try:
+    from com.sun.star.text import XTextDocument
+except ImportError:
+    XTextDocument = None
+
+try:
+    from com.sun.star.sheet import XSpreadsheetDocument
+except ImportError:
+    XSpreadsheetDocument = None
+
+try:
+    from com.sun.star.presentation import XPresentationDocument
+except ImportError:
+    XPresentationDocument = None
+
+try:
+    from com.sun.star.document import XDocumentEventListener
+except ImportError:
+    XDocumentEventListener = None
+
+try:
+    from com.sun.star.awt import XActionListener
+except ImportError:
+    XActionListener = None
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _is_instance(obj, cls):
+    """Safe isinstance check that handles None class types"""
+    if cls is None:
+        return False
+    return isinstance(obj, cls)
 
 
 class UNOBridge:
@@ -93,11 +121,11 @@ class UNOBridge:
             }
             
             # Add document-specific information
-            if isinstance(doc, XTextDocument):
+            if _is_instance(doc, XTextDocument):
                 text = doc.getText()
                 info["word_count"] = len(text.getString().split())
                 info["character_count"] = len(text.getString())
-            elif isinstance(doc, XSpreadsheetDocument):
+            elif _is_instance(doc, XSpreadsheetDocument):
                 sheets = doc.getSheets()
                 info["sheet_count"] = sheets.getCount()
                 info["sheet_names"] = [sheets.getByIndex(i).getName() 
@@ -127,11 +155,16 @@ class UNOBridge:
             
             if not doc:
                 return {"success": False, "error": "No active document"}
-            
+
+            # Check if it's a Writer document
+            is_writer = _is_instance(doc, XTextDocument) or \
+                        (hasattr(doc, 'supportsService') and doc.supportsService("com.sun.star.text.TextDocument")) or \
+                        hasattr(doc, 'getText')
+
             # Handle Writer documents
-            if isinstance(doc, XTextDocument):
+            if is_writer:
                 text_obj = doc.getText()
-                
+
                 if position is None:
                     # Insert at current cursor position
                     cursor = doc.getCurrentController().getViewCursor()
@@ -140,11 +173,11 @@ class UNOBridge:
                     cursor = text_obj.createTextCursor()
                     cursor.gotoStart(False)
                     cursor.goRight(position, False)
-                
+
                 text_obj.insertString(cursor, text, False)
                 logger.info(f"Inserted {len(text)} characters into Writer document")
                 return {"success": True, "message": f"Inserted {len(text)} characters"}
-            
+
             # Handle other document types
             else:
                 return {"success": False, "error": f"Text insertion not supported for {self._get_document_type(doc)}"}
@@ -168,7 +201,7 @@ class UNOBridge:
             if doc is None:
                 doc = self.get_active_document()
             
-            if not doc or not isinstance(doc, XTextDocument):
+            if not doc or not _is_instance(doc, XTextDocument):
                 return {"success": False, "error": "No Writer document available"}
             
             # Get current selection
@@ -295,11 +328,16 @@ class UNOBridge:
         try:
             if doc is None:
                 doc = self.get_active_document()
-            
+
             if not doc:
                 return {"success": False, "error": "No document available"}
-            
-            if isinstance(doc, XTextDocument):
+
+            # Check if it's a Writer document
+            is_writer = _is_instance(doc, XTextDocument) or \
+                        (hasattr(doc, 'supportsService') and doc.supportsService("com.sun.star.text.TextDocument")) or \
+                        hasattr(doc, 'getText')
+
+            if is_writer:
                 text = doc.getText().getString()
                 return {"success": True, "content": text, "length": len(text)}
             else:
@@ -311,14 +349,30 @@ class UNOBridge:
     
     def _get_document_type(self, doc: Any) -> str:
         """Determine document type"""
-        if isinstance(doc, XTextDocument):
+        # Try isinstance first if types are available
+        if _is_instance(doc, XTextDocument):
             return "writer"
-        elif isinstance(doc, XSpreadsheetDocument):
+        elif _is_instance(doc, XSpreadsheetDocument):
             return "calc"
-        elif isinstance(doc, XPresentationDocument):
+        elif _is_instance(doc, XPresentationDocument):
             return "impress"
-        else:
-            return "unknown"
+
+        # Fallback: check supportsService (works even if types not imported)
+        if hasattr(doc, 'supportsService'):
+            if doc.supportsService("com.sun.star.text.TextDocument"):
+                return "writer"
+            elif doc.supportsService("com.sun.star.sheet.SpreadsheetDocument"):
+                return "calc"
+            elif doc.supportsService("com.sun.star.presentation.PresentationDocument"):
+                return "impress"
+            elif doc.supportsService("com.sun.star.drawing.DrawingDocument"):
+                return "draw"
+
+        # Fallback: check for getText method (Writer documents)
+        if hasattr(doc, 'getText'):
+            return "writer"
+
+        return "unknown"
     
     def _has_selection(self, doc: Any) -> bool:
         """Check if document has selected content"""
