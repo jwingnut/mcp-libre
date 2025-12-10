@@ -639,6 +639,237 @@ class UNOBridge:
             logger.error(f"Failed to get paragraphs range: {e}")
             return {"success": False, "error": str(e)}
 
+    # ============== Cursor Navigation Tools ==============
+
+    def goto_paragraph(self, n: int, doc: Any = None) -> Dict[str, Any]:
+        """
+        Move the view cursor to the beginning of paragraph n.
+
+        Args:
+            n: Paragraph number (1-indexed)
+            doc: Document to navigate (None for active document)
+
+        Returns:
+            Result dictionary with cursor position
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Cursor navigation not supported for {doc_type} documents"}
+
+            if n < 1:
+                return {"success": False, "error": "Paragraph number must be >= 1"}
+
+            text = doc.getText()
+            enum = text.createEnumeration()
+
+            current = 0
+            target_para = None
+            while enum.hasMoreElements():
+                para = enum.nextElement()
+                if hasattr(para, 'supportsService') and para.supportsService("com.sun.star.text.Paragraph"):
+                    current += 1
+                    if current == n:
+                        target_para = para
+                        break
+
+            if target_para is None:
+                return {"success": False, "error": f"Paragraph {n} out of range. Valid range: 1-{current}"}
+
+            # Get the view cursor and move it to the paragraph start
+            controller = doc.getCurrentController()
+            view_cursor = controller.getViewCursor()
+
+            # Get paragraph start position
+            para_start = target_para.getStart()
+            view_cursor.gotoRange(para_start, False)
+
+            logger.info(f"Moved cursor to paragraph {n}")
+            return {
+                "success": True,
+                "message": f"Cursor moved to paragraph {n}",
+                "paragraph": n
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to goto paragraph: {e}")
+            return {"success": False, "error": str(e)}
+
+    def goto_position(self, char_pos: int, doc: Any = None) -> Dict[str, Any]:
+        """
+        Move the view cursor to a specific character position.
+
+        Args:
+            char_pos: Character position (0-indexed)
+            doc: Document to navigate (None for active document)
+
+        Returns:
+            Result dictionary with actual position reached
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Cursor navigation not supported for {doc_type} documents"}
+
+            if char_pos < 0:
+                return {"success": False, "error": "Character position must be >= 0"}
+
+            text = doc.getText()
+            text_cursor = text.createTextCursor()
+            text_cursor.gotoStart(False)
+
+            # Move to position (goRight returns False if it can't move that far)
+            actual_moved = 0
+            if char_pos > 0:
+                moved = text_cursor.goRight(char_pos, False)
+                # Count actual position
+                text_cursor_check = text.createTextCursor()
+                text_cursor_check.gotoStart(False)
+                text_cursor_check.gotoRange(text_cursor, True)
+                actual_moved = len(text_cursor_check.getString())
+
+            # Move view cursor to this position
+            controller = doc.getCurrentController()
+            view_cursor = controller.getViewCursor()
+            view_cursor.gotoRange(text_cursor, False)
+
+            logger.info(f"Moved cursor to position {actual_moved}")
+            return {
+                "success": True,
+                "message": f"Cursor moved to position {actual_moved}",
+                "position": actual_moved,
+                "requested_position": char_pos
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to goto position: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_cursor_position(self, doc: Any = None) -> Dict[str, Any]:
+        """
+        Get the current cursor character position and paragraph number.
+
+        Args:
+            doc: Document to check (None for active document)
+
+        Returns:
+            Result dictionary with position and paragraph info
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Cursor position not supported for {doc_type} documents"}
+
+            controller = doc.getCurrentController()
+            view_cursor = controller.getViewCursor()
+
+            # Get character position by measuring from start
+            text = doc.getText()
+            text_cursor = text.createTextCursor()
+            text_cursor.gotoStart(False)
+            text_cursor.gotoRange(view_cursor, True)
+            char_position = len(text_cursor.getString())
+
+            # Find paragraph number
+            enum = text.createEnumeration()
+            paragraph_num = 0
+            char_count = 0
+
+            while enum.hasMoreElements():
+                para = enum.nextElement()
+                if hasattr(para, 'supportsService') and para.supportsService("com.sun.star.text.Paragraph"):
+                    paragraph_num += 1
+                    para_text = para.getString() if hasattr(para, 'getString') else ""
+                    char_count += len(para_text) + 1  # +1 for paragraph break
+
+                    if char_count >= char_position:
+                        break
+
+            logger.info(f"Cursor at position {char_position}, paragraph {paragraph_num}")
+            return {
+                "success": True,
+                "position": char_position,
+                "paragraph": paragraph_num
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get cursor position: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_context_around_cursor(self, chars: int = 100, doc: Any = None) -> Dict[str, Any]:
+        """
+        Get text context around the current cursor position.
+
+        Args:
+            chars: Number of characters to get before and after cursor
+            doc: Document to read from (None for active document)
+
+        Returns:
+            Result dictionary with text before and after cursor
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Cursor context not supported for {doc_type} documents"}
+
+            controller = doc.getCurrentController()
+            view_cursor = controller.getViewCursor()
+            text = doc.getText()
+
+            # Get text before cursor
+            before_cursor = text.createTextCursor()
+            before_cursor.gotoStart(False)
+            before_cursor.gotoRange(view_cursor, True)
+            full_before = before_cursor.getString()
+            text_before = full_before[-chars:] if len(full_before) > chars else full_before
+
+            # Get text after cursor
+            after_cursor = text.createTextCursor()
+            after_cursor.gotoRange(view_cursor, False)
+            after_cursor.gotoEnd(True)
+            full_after = after_cursor.getString()
+            text_after = full_after[:chars] if len(full_after) > chars else full_after
+
+            # Get current position
+            char_position = len(full_before)
+
+            logger.info(f"Got context around position {char_position}")
+            return {
+                "success": True,
+                "before": text_before,
+                "after": text_after,
+                "position": char_position,
+                "chars_requested": chars
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get context around cursor: {e}")
+            return {"success": False, "error": str(e)}
+
     def _get_document_type(self, doc: Any) -> str:
         """Determine document type"""
         # Try isinstance first if types are available
