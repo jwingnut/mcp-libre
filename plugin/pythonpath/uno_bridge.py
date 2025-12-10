@@ -347,6 +347,73 @@ class UNOBridge:
             logger.error(f"Failed to get text content: {e}")
             return {"success": False, "error": str(e)}
     
+    def get_comments(self, doc: Any = None) -> Dict[str, Any]:
+        """Get all comments/annotations from the document"""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            comments = []
+
+            # Try to get text fields enumeration (comments are stored as text fields)
+            if hasattr(doc, 'getTextFields'):
+                text_fields = doc.getTextFields()
+                enum = text_fields.createEnumeration()
+
+                while enum.hasMoreElements():
+                    field = enum.nextElement()
+                    # Check if it's an annotation (comment)
+                    if hasattr(field, 'supportsService') and field.supportsService("com.sun.star.text.TextField.Annotation"):
+                        comment_data = {
+                            "author": field.Author if hasattr(field, 'Author') else "",
+                            "content": field.Content if hasattr(field, 'Content') else "",
+                            "date": str(field.Date) if hasattr(field, 'Date') else "",
+                        }
+                        # Try to get the anchor text (what the comment is attached to)
+                        if hasattr(field, 'getAnchor'):
+                            anchor = field.getAnchor()
+                            if hasattr(anchor, 'getString'):
+                                comment_data["anchor_text"] = anchor.getString()[:100]  # First 100 chars
+                        comments.append(comment_data)
+
+            return {"success": True, "comments": comments, "count": len(comments)}
+
+        except Exception as e:
+            logger.error(f"Failed to get comments: {e}")
+            return {"success": False, "error": str(e)}
+
+    def add_comment(self, text: str, author: str = "Claude", doc: Any = None) -> Dict[str, Any]:
+        """Add a comment at the current cursor position"""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            # Get the current cursor position
+            controller = doc.getCurrentController()
+            cursor = controller.getViewCursor()
+
+            # Create annotation field
+            annotation = doc.createInstance("com.sun.star.text.TextField.Annotation")
+            annotation.Content = text
+            annotation.Author = author
+
+            # Insert at cursor position
+            text_obj = doc.getText()
+            text_obj.insertTextContent(cursor, annotation, False)
+
+            logger.info(f"Added comment by {author}: {text[:50]}...")
+            return {"success": True, "message": f"Comment added by {author}"}
+
+        except Exception as e:
+            logger.error(f"Failed to add comment: {e}")
+            return {"success": False, "error": str(e)}
+
     def _get_document_type(self, doc: Any) -> str:
         """Determine document type"""
         # Try isinstance first if types are available

@@ -162,7 +162,37 @@ class LibreOfficeMCPServer:
             },
             "handler": self.list_open_documents
         }
-        
+
+        # Comment tools
+        self.tools["get_comments_live"] = {
+            "description": "Get all comments/annotations from the document",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.get_comments_live
+        }
+
+        self.tools["add_comment_live"] = {
+            "description": "Add a comment at the current cursor position",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Comment text"
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "Comment author name",
+                        "default": "Claude"
+                    }
+                },
+                "required": ["text"]
+            },
+            "handler": self.add_comment_live
+        }
+
         logger.info(f"Registered {len(self.tools)} MCP tools")
     
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -279,9 +309,17 @@ class LibreOfficeMCPServer:
                 "documents": documents,
                 "count": len(documents)
             }
-            
+
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def get_comments_live(self) -> Dict[str, Any]:
+        """Get all comments/annotations from the document"""
+        return self.uno_bridge.get_comments()
+
+    def add_comment_live(self, text: str, author: str = "Claude") -> Dict[str, Any]:
+        """Add a comment at the current cursor position"""
+        return self.uno_bridge.add_comment(text, author)
 
 
 # Global instance

@@ -179,5 +179,31 @@ def check_libreoffice_status() -> dict:
     return call_libreoffice("/health")
 
 
+@mcp.tool
+def get_comments() -> dict:
+    """
+    Get all comments/annotations from the active LibreOffice document.
+
+    Returns:
+        List of comments with author, content, date, and anchor text
+    """
+    return call_libreoffice("/tools/get_comments_live", "POST", {})
+
+
+@mcp.tool
+def add_comment(text: str, author: str = "Claude") -> dict:
+    """
+    Add a comment at the current cursor position in LibreOffice Writer.
+
+    Args:
+        text: The comment text
+        author: Author name for the comment (default: "Claude")
+
+    Returns:
+        Result with success status
+    """
+    return call_libreoffice("/tools/add_comment_live", "POST", {"text": text, "author": author})
+
+
 if __name__ == "__main__":
     mcp.run()
