@@ -414,6 +414,93 @@ class LibreOfficeMCPServer:
             "handler": self.find_and_replace_all_live
         }
 
+        # Track Changes tools
+        self.tools["get_track_changes_status_live"] = {
+            "description": "Get Track Changes recording and display status",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.get_track_changes_status_live
+        }
+
+        self.tools["set_track_changes_live"] = {
+            "description": "Enable or disable Track Changes recording and display",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Enable or disable Track Changes recording"
+                    },
+                    "show": {
+                        "type": "boolean",
+                        "description": "Show or hide tracked changes",
+                        "default": True
+                    }
+                },
+                "required": ["enabled"]
+            },
+            "handler": self.set_track_changes_live
+        }
+
+        self.tools["get_tracked_changes_live"] = {
+            "description": "Get list of all tracked changes in the document",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.get_tracked_changes_live
+        }
+
+        self.tools["accept_tracked_change_live"] = {
+            "description": "Accept a specific tracked change by index",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "index": {
+                        "type": "integer",
+                        "description": "Index of the tracked change to accept"
+                    }
+                },
+                "required": ["index"]
+            },
+            "handler": self.accept_tracked_change_live
+        }
+
+        self.tools["reject_tracked_change_live"] = {
+            "description": "Reject a specific tracked change by index",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "index": {
+                        "type": "integer",
+                        "description": "Index of the tracked change to reject"
+                    }
+                },
+                "required": ["index"]
+            },
+            "handler": self.reject_tracked_change_live
+        }
+
+        self.tools["accept_all_changes_live"] = {
+            "description": "Accept all tracked changes in the document",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.accept_all_changes_live
+        }
+
+        self.tools["reject_all_changes_live"] = {
+            "description": "Reject all tracked changes in the document",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.reject_all_changes_live
+        }
+
         logger.info(f"Registered {len(self.tools)} MCP tools")
     
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -609,6 +696,36 @@ class LibreOfficeMCPServer:
     def find_and_replace_all_live(self, old: str, new: str) -> Dict[str, Any]:
         """Find and replace all occurrences"""
         return self.uno_bridge.find_and_replace_all(old, new)
+
+    # Track Changes Handlers
+
+    def get_track_changes_status_live(self) -> Dict[str, Any]:
+        """Get Track Changes recording and display status"""
+        return self.uno_bridge.get_track_changes_status()
+
+    def set_track_changes_live(self, enabled: bool, show: bool = True) -> Dict[str, Any]:
+        """Enable or disable Track Changes recording and display"""
+        return self.uno_bridge.set_track_changes(enabled, show)
+
+    def get_tracked_changes_live(self) -> Dict[str, Any]:
+        """Get list of all tracked changes in the document"""
+        return self.uno_bridge.get_tracked_changes()
+
+    def accept_tracked_change_live(self, index: int) -> Dict[str, Any]:
+        """Accept a specific tracked change by index"""
+        return self.uno_bridge.accept_tracked_change(index)
+
+    def reject_tracked_change_live(self, index: int) -> Dict[str, Any]:
+        """Reject a specific tracked change by index"""
+        return self.uno_bridge.reject_tracked_change(index)
+
+    def accept_all_changes_live(self) -> Dict[str, Any]:
+        """Accept all tracked changes in the document"""
+        return self.uno_bridge.accept_all_changes()
+
+    def reject_all_changes_live(self) -> Dict[str, Any]:
+        """Reject all tracked changes in the document"""
+        return self.uno_bridge.reject_all_changes()
 
 
 # Global instance

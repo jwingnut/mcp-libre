@@ -378,6 +378,159 @@ def test_find_and_replace_all():
     return True
 
 
+# Track Changes Tools Tests
+
+def test_get_track_changes_status():
+    """Test getting track changes status"""
+    print("Testing get_track_changes_status_live tool...")
+    result = make_request("/tools/get_track_changes_status_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        recording = result.get("recording", False)
+        showing = result.get("showing", False)
+        pending = result.get("pending_count", 0)
+        print(f"  ✓ Track Changes status: recording={recording}, showing={showing}, pending={pending}")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_set_track_changes():
+    """Test enabling/disabling track changes"""
+    print("Testing set_track_changes_live tool...")
+
+    # Test enabling track changes
+    print("  Testing enable track changes...")
+    result = make_request("/tools/set_track_changes_live", method="POST", data={"enabled": True, "show": True})
+
+    if "error" in result:
+        print(f"  ⚠ Error enabling: {result['error']}")
+    elif result.get("success"):
+        print(f"  ✓ Enabled track changes successfully")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+
+    # Test disabling track changes
+    print("  Testing disable track changes...")
+    result = make_request("/tools/set_track_changes_live", method="POST", data={"enabled": False})
+
+    if "error" in result:
+        print(f"  ⚠ Error disabling: {result['error']}")
+    elif result.get("success"):
+        print(f"  ✓ Disabled track changes successfully")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+
+    return True
+
+
+def test_get_tracked_changes():
+    """Test listing tracked changes"""
+    print("Testing get_tracked_changes_live tool...")
+    result = make_request("/tools/get_tracked_changes_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        changes = result.get("changes", [])
+        print(f"  ✓ Found {len(changes)} tracked changes")
+        if changes:
+            # Show first change as example
+            first = changes[0]
+            print(f"    Example: Type={first.get('type', 'N/A')}, Author={first.get('author', 'N/A')}")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_accept_tracked_change():
+    """Test accepting a tracked change"""
+    print("Testing accept_tracked_change_live tool...")
+
+    # First get the count of changes
+    status_result = make_request("/tools/get_tracked_changes_live", method="POST", data={})
+
+    if status_result.get("success"):
+        changes = status_result.get("changes", [])
+        if len(changes) > 0:
+            # Try to accept the first change
+            result = make_request("/tools/accept_tracked_change_live", method="POST", data={"index": 0})
+
+            if "error" in result:
+                print(f"  ⚠ Error: {result['error']}")
+            elif result.get("success"):
+                accepted_idx = result.get("accepted_index", 0)
+                print(f"  ✓ Accepted change at index {accepted_idx}")
+            else:
+                print(f"  ⚠ Unexpected result: {result}")
+        else:
+            print(f"  ⚠ No tracked changes available to accept (this is expected)")
+    else:
+        print(f"  ⚠ Could not get tracked changes list")
+
+    return True
+
+
+def test_reject_tracked_change():
+    """Test rejecting a tracked change"""
+    print("Testing reject_tracked_change_live tool...")
+
+    # First get the count of changes
+    status_result = make_request("/tools/get_tracked_changes_live", method="POST", data={})
+
+    if status_result.get("success"):
+        changes = status_result.get("changes", [])
+        if len(changes) > 0:
+            # Try to reject the first change
+            result = make_request("/tools/reject_tracked_change_live", method="POST", data={"index": 0})
+
+            if "error" in result:
+                print(f"  ⚠ Error: {result['error']}")
+            elif result.get("success"):
+                rejected_idx = result.get("rejected_index", 0)
+                print(f"  ✓ Rejected change at index {rejected_idx}")
+            else:
+                print(f"  ⚠ Unexpected result: {result}")
+        else:
+            print(f"  ⚠ No tracked changes available to reject (this is expected)")
+    else:
+        print(f"  ⚠ Could not get tracked changes list")
+
+    return True
+
+
+def test_accept_all_changes():
+    """Test accepting all tracked changes"""
+    print("Testing accept_all_changes_live tool...")
+    result = make_request("/tools/accept_all_changes_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        count = result.get("accepted_count", 0)
+        print(f"  ✓ Accepted {count} changes")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_reject_all_changes():
+    """Test rejecting all tracked changes"""
+    print("Testing reject_all_changes_live tool...")
+    result = make_request("/tools/reject_all_changes_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        count = result.get("rejected_count", 0)
+        print(f"  ✓ Rejected {count} changes")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
 def run_all_tests():
     """Run all tests"""
     print("=" * 60)
@@ -427,6 +580,14 @@ def run_all_tests():
         test_find_text,
         test_find_and_replace,
         test_find_and_replace_all,
+        # Track Changes Tools
+        test_get_track_changes_status,
+        test_set_track_changes,
+        test_get_tracked_changes,
+        test_accept_tracked_change,
+        test_reject_tracked_change,
+        test_accept_all_changes,
+        test_reject_all_changes,
     ]
 
     passed = 0

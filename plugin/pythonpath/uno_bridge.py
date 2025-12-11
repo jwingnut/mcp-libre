@@ -108,31 +108,42 @@ class UNOBridge:
         try:
             if doc is None:
                 doc = self.get_active_document()
-            
+
             if not doc:
                 return {"error": "No document available"}
-            
+
+            doc_type = self._get_document_type(doc)
+
             info = {
                 "title": getattr(doc, 'Title', 'Unknown') if hasattr(doc, 'Title') else "Unknown",
                 "url": doc.getURL() if hasattr(doc, 'getURL') else "",
                 "modified": doc.isModified() if hasattr(doc, 'isModified') else False,
-                "type": self._get_document_type(doc),
+                "type": doc_type,
                 "has_selection": self._has_selection(doc)
             }
-            
+
             # Add document-specific information
             if _is_instance(doc, XTextDocument):
                 text = doc.getText()
                 info["word_count"] = len(text.getString().split())
                 info["character_count"] = len(text.getString())
+
+                # Add track_changes status for Writer documents
+                tc_status = self.get_track_changes_status(doc)
+                if tc_status.get("success"):
+                    info["track_changes"] = {
+                        "recording": tc_status.get("recording", False),
+                        "showing": tc_status.get("showing", False),
+                        "pending_count": tc_status.get("pending_count", 0)
+                    }
             elif _is_instance(doc, XSpreadsheetDocument):
                 sheets = doc.getSheets()
                 info["sheet_count"] = sheets.getCount()
-                info["sheet_names"] = [sheets.getByIndex(i).getName() 
+                info["sheet_names"] = [sheets.getByIndex(i).getName()
                                      for i in range(sheets.getCount())]
-            
+
             return info
-            
+
         except Exception as e:
             logger.error(f"Failed to get document info: {e}")
             return {"error": str(e)}
@@ -414,6 +425,464 @@ class UNOBridge:
             logger.error(f"Failed to add comment: {e}")
             return {"success": False, "error": str(e)}
 
+    # ============== Track Changes Tools ==============
+
+    def get_track_changes_status(self, doc: Any = None) -> Dict[str, Any]:
+        """
+        Get Track Changes status for the document.
+
+        Args:
+            doc: Document to check (None for active document)
+
+        Returns:
+            Result dictionary with recording, showing, and pending_count
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Track Changes not supported for {doc_type} documents"}
+
+            # Get RecordChanges and ShowChanges properties
+            recording = False
+            showing = False
+            pending_count = 0
+
+            # Access document properties via XPropertySet
+            if hasattr(doc, 'getPropertyValue'):
+                try:
+                    recording = doc.getPropertyValue("RecordChanges")
+                except:
+                    pass
+                try:
+                    showing = doc.getPropertyValue("ShowChanges")
+                except:
+                    pass
+
+            # Count pending redlines using XRedlinesSupplier
+            if hasattr(doc, 'getRedlines'):
+                try:
+                    redlines = doc.getRedlines()
+                    if redlines:
+                        pending_count = redlines.getCount()
+                except:
+                    pass
+
+            logger.info(f"Track Changes status: recording={recording}, showing={showing}, pending={pending_count}")
+            return {
+                "success": True,
+                "recording": recording,
+                "showing": showing,
+                "pending_count": pending_count
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get track changes status: {e}")
+            return {"success": False, "error": str(e)}
+
+    def set_track_changes(self, enabled: bool, show: bool = True, doc: Any = None) -> Dict[str, Any]:
+        """
+        Enable or disable Track Changes recording.
+
+        Args:
+            enabled: Whether to enable Track Changes recording
+            show: Whether to show tracked changes (default: True)
+            doc: Document to modify (None for active document)
+
+        Returns:
+            Result dictionary with new state
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Track Changes not supported for {doc_type} documents"}
+
+            # Set properties via XPropertySet
+            if hasattr(doc, 'setPropertyValue'):
+                try:
+                    doc.setPropertyValue("RecordChanges", enabled)
+                except Exception as e:
+                    return {"success": False, "error": f"Cannot set RecordChanges: {e}"}
+                try:
+                    doc.setPropertyValue("ShowChanges", show)
+                except Exception as e:
+                    return {"success": False, "error": f"Cannot set ShowChanges: {e}"}
+            else:
+                return {"success": False, "error": "Document does not support property modification"}
+
+            logger.info(f"Set Track Changes: recording={enabled}, showing={show}")
+            return {
+                "success": True,
+                "recording": enabled,
+                "showing": show
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to set track changes: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_tracked_changes(self, doc: Any = None) -> Dict[str, Any]:
+        """
+        Get list of all tracked changes in the document.
+
+        Args:
+            doc: Document to check (None for active document)
+
+        Returns:
+            Result dictionary with list of changes
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Track Changes not supported for {doc_type} documents"}
+
+            changes = []
+
+            # Get redlines using XRedlinesSupplier
+            if hasattr(doc, 'getRedlines'):
+                redlines = doc.getRedlines()
+                if redlines:
+                    for i in range(redlines.getCount()):
+                        try:
+                            redline = redlines.getByIndex(i)
+
+                            # Get redline properties
+                            redline_type = ""
+                            if hasattr(redline, 'RedlineType'):
+                                redline_type = redline.RedlineType
+
+                            text = ""
+                            if hasattr(redline, 'getText'):
+                                text_obj = redline.getText()
+                                if text_obj and hasattr(text_obj, 'getString'):
+                                    text = text_obj.getString()
+
+                            author = ""
+                            if hasattr(redline, 'RedlineAuthor'):
+                                author = redline.RedlineAuthor
+
+                            date_str = ""
+                            if hasattr(redline, 'RedlineDateTime'):
+                                dt = redline.RedlineDateTime
+                                # Format as ISO string
+                                date_str = f"{dt.Year:04d}-{dt.Month:02d}-{dt.Day:02d}T{dt.Hours:02d}:{dt.Minutes:02d}:{dt.Seconds:02d}"
+
+                            description = ""
+                            if hasattr(redline, 'RedlineComment'):
+                                description = redline.RedlineComment
+
+                            changes.append({
+                                "index": i,
+                                "type": redline_type.lower() if redline_type else "unknown",
+                                "text": text[:500] if text else "",  # Limit text length
+                                "author": author,
+                                "date": date_str,
+                                "description": description
+                            })
+                        except Exception as e:
+                            logger.warning(f"Failed to read redline {i}: {e}")
+                            continue
+
+            logger.info(f"Found {len(changes)} tracked changes")
+            return {
+                "success": True,
+                "changes": changes,
+                "count": len(changes)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get tracked changes: {e}")
+            return {"success": False, "error": str(e)}
+
+    def accept_tracked_change(self, index: int, doc: Any = None) -> Dict[str, Any]:
+        """
+        Accept a specific tracked change by index.
+
+        Args:
+            index: Index of the change to accept (0-based)
+            doc: Document to modify (None for active document)
+
+        Returns:
+            Result dictionary with accepted index
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Track Changes not supported for {doc_type} documents"}
+
+            if not hasattr(doc, 'getRedlines'):
+                return {"success": False, "error": "Document does not support redlines"}
+
+            redlines = doc.getRedlines()
+            if not redlines:
+                return {"success": False, "error": "No tracked changes in document"}
+
+            count = redlines.getCount()
+            if index < 0 or index >= count:
+                return {"success": False, "error": f"Index {index} out of range. Valid range: 0-{count-1}"}
+
+            # Get the redline and accept it
+            redline = redlines.getByIndex(index)
+
+            # Accept by getting the text range and accepting via the document
+            if hasattr(redline, 'getAnchor'):
+                anchor = redline.getAnchor()
+                if hasattr(anchor, 'getString'):
+                    # Use the document's text to accept the redline
+                    text = doc.getText()
+                    if hasattr(text, 'createTextCursor'):
+                        cursor = text.createTextCursorByRange(anchor)
+                        # Accept redline - in UNO API, accepting means the change becomes permanent
+                        if hasattr(doc, 'acceptRedline'):
+                            doc.acceptRedline(index)
+                        else:
+                            # Alternative: use dispatcher
+                            return {"success": False, "error": "Document does not support acceptRedline method"}
+
+            logger.info(f"Accepted tracked change at index {index}")
+            return {
+                "success": True,
+                "accepted_index": index
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to accept tracked change: {e}")
+            return {"success": False, "error": str(e)}
+
+    def reject_tracked_change(self, index: int, doc: Any = None) -> Dict[str, Any]:
+        """
+        Reject a specific tracked change by index.
+
+        Args:
+            index: Index of the change to reject (0-based)
+            doc: Document to modify (None for active document)
+
+        Returns:
+            Result dictionary with rejected index
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Track Changes not supported for {doc_type} documents"}
+
+            if not hasattr(doc, 'getRedlines'):
+                return {"success": False, "error": "Document does not support redlines"}
+
+            redlines = doc.getRedlines()
+            if not redlines:
+                return {"success": False, "error": "No tracked changes in document"}
+
+            count = redlines.getCount()
+            if index < 0 or index >= count:
+                return {"success": False, "error": f"Index {index} out of range. Valid range: 0-{count-1}"}
+
+            # Reject the redline
+            if hasattr(doc, 'rejectRedline'):
+                doc.rejectRedline(index)
+            else:
+                return {"success": False, "error": "Document does not support rejectRedline method"}
+
+            logger.info(f"Rejected tracked change at index {index}")
+            return {
+                "success": True,
+                "rejected_index": index
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to reject tracked change: {e}")
+            return {"success": False, "error": str(e)}
+
+    def accept_all_changes(self, doc: Any = None) -> Dict[str, Any]:
+        """
+        Accept all tracked changes in the document.
+
+        Args:
+            doc: Document to modify (None for active document)
+
+        Returns:
+            Result dictionary with count of accepted changes
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Track Changes not supported for {doc_type} documents"}
+
+            if not hasattr(doc, 'getRedlines'):
+                return {"success": False, "error": "Document does not support redlines"}
+
+            redlines = doc.getRedlines()
+            if not redlines:
+                return {"success": True, "accepted_count": 0}
+
+            count = redlines.getCount()
+            if count == 0:
+                return {"success": True, "accepted_count": 0}
+
+            # Accept in reverse order to avoid index shifting
+            accepted = 0
+            for i in range(count - 1, -1, -1):
+                try:
+                    if hasattr(doc, 'acceptRedline'):
+                        doc.acceptRedline(i)
+                        accepted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to accept redline {i}: {e}")
+
+            logger.info(f"Accepted {accepted} tracked changes")
+            return {
+                "success": True,
+                "accepted_count": accepted
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to accept all changes: {e}")
+            return {"success": False, "error": str(e)}
+
+    def reject_all_changes(self, doc: Any = None) -> Dict[str, Any]:
+        """
+        Reject all tracked changes in the document.
+
+        Args:
+            doc: Document to modify (None for active document)
+
+        Returns:
+            Result dictionary with count of rejected changes
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+
+            doc_type = self._get_document_type(doc)
+            if doc_type != "writer":
+                return {"success": False, "error": f"Track Changes not supported for {doc_type} documents"}
+
+            if not hasattr(doc, 'getRedlines'):
+                return {"success": False, "error": "Document does not support redlines"}
+
+            redlines = doc.getRedlines()
+            if not redlines:
+                return {"success": True, "rejected_count": 0}
+
+            count = redlines.getCount()
+            if count == 0:
+                return {"success": True, "rejected_count": 0}
+
+            # Reject in reverse order to avoid index shifting
+            rejected = 0
+            for i in range(count - 1, -1, -1):
+                try:
+                    if hasattr(doc, 'rejectRedline'):
+                        doc.rejectRedline(i)
+                        rejected += 1
+                except Exception as e:
+                    logger.warning(f"Failed to reject redline {i}: {e}")
+
+            logger.info(f"Rejected {rejected} tracked changes")
+            return {
+                "success": True,
+                "rejected_count": rejected
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to reject all changes: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _is_in_tracked_deletion(self, text_range: Any, doc: Any = None) -> bool:
+        """
+        Check if a text range is within a tracked deletion.
+
+        Args:
+            text_range: The text range to check
+            doc: Document to check (None for active document)
+
+        Returns:
+            True if range is in a tracked deletion, False otherwise
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc or not hasattr(doc, 'getRedlines'):
+                return False
+
+            redlines = doc.getRedlines()
+            if not redlines:
+                return False
+
+            text = doc.getText()
+
+            for i in range(redlines.getCount()):
+                try:
+                    redline = redlines.getByIndex(i)
+
+                    # Only check deletion redlines
+                    if hasattr(redline, 'RedlineType'):
+                        redline_type = redline.RedlineType
+                        if redline_type and redline_type.lower() == "delete":
+                            # Get redline anchor/range
+                            if hasattr(redline, 'getAnchor'):
+                                redline_range = redline.getAnchor()
+
+                                # Compare ranges
+                                # Check if text_range start is within redline range
+                                try:
+                                    start_compare = text.compareRegionStarts(text_range, redline_range)
+                                    end_compare = text.compareRegionEnds(text_range, redline_range)
+
+                                    # If text_range is fully contained within redline_range
+                                    # start_compare >= 0 means text_range starts at or after redline start
+                                    # end_compare <= 0 means text_range ends at or before redline end
+                                    if start_compare >= 0 and end_compare <= 0:
+                                        return True
+                                except:
+                                    pass
+                except:
+                    continue
+
+            return False
+
+        except Exception as e:
+            logger.warning(f"Error checking tracked deletion: {e}")
+            return False
+
     # ============== Enhanced Editing Tools ==============
 
     def get_paragraph_count(self, doc: Any = None) -> Dict[str, Any]:
@@ -554,12 +1023,23 @@ class UNOBridge:
                     current += 1
                     if current == n:
                         content = para.getString() if hasattr(para, 'getString') else ""
-                        logger.info(f"Retrieved paragraph {n}")
-                        return {
+
+                        # Build result with original content
+                        result = {
                             "success": True,
                             "paragraph_number": n,
                             "content": content
                         }
+
+                        # Add visible_content if Track Changes is enabled
+                        tc_status = self.get_track_changes_status(doc)
+                        if tc_status.get("success") and tc_status.get("recording"):
+                            # Filter out tracked deletions
+                            visible_content = self._filter_tracked_deletions(para, doc)
+                            result["visible_content"] = visible_content
+
+                        logger.info(f"Retrieved paragraph {n}")
+                        return result
 
             # Paragraph not found
             return {
@@ -570,6 +1050,89 @@ class UNOBridge:
         except Exception as e:
             logger.error(f"Failed to get paragraph: {e}")
             return {"success": False, "error": str(e)}
+
+    def _filter_tracked_deletions(self, para: Any, doc: Any) -> str:
+        """
+        Filter out tracked deletions from paragraph content.
+
+        Args:
+            para: Paragraph text element
+            doc: Document containing the paragraph
+
+        Returns:
+            String with tracked deletions filtered out
+        """
+        try:
+            if not hasattr(doc, 'getRedlines'):
+                return para.getString() if hasattr(para, 'getString') else ""
+
+            redlines = doc.getRedlines()
+            if not redlines or redlines.getCount() == 0:
+                return para.getString() if hasattr(para, 'getString') else ""
+
+            # Get paragraph range
+            para_start = para.getStart()
+            para_end = para.getEnd()
+            text = doc.getText()
+
+            # Collect all deletion ranges within this paragraph
+            deletion_ranges = []
+            for i in range(redlines.getCount()):
+                try:
+                    redline = redlines.getByIndex(i)
+
+                    # Only check deletion redlines
+                    if hasattr(redline, 'RedlineType'):
+                        redline_type = redline.RedlineType
+                        if redline_type and redline_type.lower() == "delete":
+                            if hasattr(redline, 'getAnchor'):
+                                redline_range = redline.getAnchor()
+
+                                # Check if deletion overlaps with this paragraph
+                                try:
+                                    # Use compareRegionStarts/Ends to check overlap
+                                    # If deletion is within paragraph, add to list
+                                    deletion_ranges.append(redline_range)
+                                except:
+                                    pass
+                except:
+                    continue
+
+            # If no deletions, return original text
+            if not deletion_ranges:
+                return para.getString() if hasattr(para, 'getString') else ""
+
+            # Build visible content by iterating through paragraph portions
+            visible_text = []
+            if hasattr(para, 'createEnumeration'):
+                portion_enum = para.createEnumeration()
+                while portion_enum.hasMoreElements():
+                    portion = portion_enum.nextElement()
+
+                    # Check if this portion is in a tracked deletion
+                    is_deleted = False
+                    for del_range in deletion_ranges:
+                        try:
+                            # Check if portion overlaps with deletion
+                            if self._is_in_tracked_deletion(portion, doc):
+                                is_deleted = True
+                                break
+                        except:
+                            pass
+
+                    # Add portion text if not deleted
+                    if not is_deleted and hasattr(portion, 'getString'):
+                        visible_text.append(portion.getString())
+            else:
+                # Fallback to full paragraph text if can't enumerate portions
+                return para.getString() if hasattr(para, 'getString') else ""
+
+            return ''.join(visible_text)
+
+        except Exception as e:
+            logger.warning(f"Failed to filter tracked deletions: {e}")
+            # Fallback to original content
+            return para.getString() if hasattr(para, 'getString') else ""
 
     def get_paragraphs_range(self, start: int, end: int, doc: Any = None) -> Dict[str, Any]:
         """
@@ -1132,6 +1695,16 @@ class UNOBridge:
             if doc_type != "writer":
                 return {"success": False, "error": f"Text search not supported for {doc_type} documents"}
 
+            # Check if Track Changes is enabled
+            track_changes_active = False
+            if hasattr(doc, 'getPropertyValue'):
+                try:
+                    recording = doc.getPropertyValue("RecordChanges")
+                    showing = doc.getPropertyValue("ShowChanges")
+                    track_changes_active = recording or showing
+                except:
+                    pass
+
             # Create search descriptor
             search = doc.createSearchDescriptor()
             search.SearchString = query
@@ -1145,6 +1718,10 @@ class UNOBridge:
 
                 for i in range(found.getCount()):
                     match_range = found.getByIndex(i)
+
+                    # Filter out matches in tracked deletions when Track Changes is active
+                    if track_changes_active and self._is_in_tracked_deletion(match_range, doc):
+                        continue
 
                     # Calculate character position from start
                     text_cursor = text.createTextCursor()
@@ -1160,12 +1737,13 @@ class UNOBridge:
                         "text": matched_text
                     })
 
-            logger.info(f"Found {len(matches)} occurrences of '{query}'")
+            logger.info(f"Found {len(matches)} occurrences of '{query}' (Track Changes: {track_changes_active})")
             return {
                 "success": True,
                 "matches": matches,
                 "count": len(matches),
-                "query": query
+                "query": query,
+                "track_changes_active": track_changes_active
             }
 
         except Exception as e:
@@ -1175,6 +1753,9 @@ class UNOBridge:
     def find_and_replace(self, old: str, new: str, doc: Any = None) -> Dict[str, Any]:
         """
         Find and replace the first occurrence of old with new.
+
+        When Track Changes is enabled, only replaces visible text occurrences,
+        skipping matches that are within tracked deletions.
 
         Args:
             old: String to find
@@ -1195,12 +1776,22 @@ class UNOBridge:
             if doc_type != "writer":
                 return {"success": False, "error": f"Find and replace not supported for {doc_type} documents"}
 
+            # Check if Track Changes is enabled
+            track_changes_status = self.get_track_changes_status(doc)
+            track_changes_active = track_changes_status.get("success") and track_changes_status.get("recording", False)
+
             # Create search descriptor
             search = doc.createSearchDescriptor()
             search.SearchString = old
 
             # Find first occurrence
             found = doc.findFirst(search)
+
+            # If Track Changes is active, skip matches in tracked deletions
+            if track_changes_active and found:
+                while found and self._is_in_tracked_deletion(found, doc):
+                    # Continue searching for next match
+                    found = doc.findNext(found.getEnd(), search)
 
             if found:
                 # Calculate position before replacement
@@ -1238,6 +1829,10 @@ class UNOBridge:
         """
         Find and replace all occurrences of old with new.
 
+        Track Changes aware: When Track Changes is enabled, this method iterates
+        through matches manually to skip replacements in tracked deletions.
+        When Track Changes is disabled, it uses native replaceAll for performance.
+
         Args:
             old: String to find
             new: String to replace with
@@ -1257,20 +1852,59 @@ class UNOBridge:
             if doc_type != "writer":
                 return {"success": False, "error": f"Find and replace all not supported for {doc_type} documents"}
 
-            # Create replace descriptor
-            replace = doc.createReplaceDescriptor()
-            replace.SearchString = old
-            replace.ReplaceString = new
+            # Check if Track Changes is enabled
+            track_changes_active = False
+            if hasattr(doc, 'getPropertyValue'):
+                try:
+                    track_changes_active = doc.getPropertyValue("RecordChanges")
+                except:
+                    pass
 
-            # Replace all occurrences
-            count = doc.replaceAll(replace)
+            # If Track Changes is disabled, use native replaceAll for performance
+            if not track_changes_active:
+                replace = doc.createReplaceDescriptor()
+                replace.SearchString = old
+                replace.ReplaceString = new
+                count = doc.replaceAll(replace)
 
-            logger.info(f"Replaced {count} occurrences of '{old}' with '{new}'")
+                logger.info(f"Replaced {count} occurrences of '{old}' with '{new}' (Track Changes disabled)")
+                return {
+                    "success": True,
+                    "count": count,
+                    "old": old,
+                    "new": new,
+                    "track_changes_active": False
+                }
+
+            # Track Changes is enabled - must iterate manually to skip tracked deletions
+            # Native replaceAll ignores Track Changes, so we use findFirst/findNext
+            search = doc.createSearchDescriptor()
+            search.SearchString = old
+
+            count = 0
+            found = doc.findFirst(search)
+
+            while found:
+                # Check if this match is in a tracked deletion
+                if not self._is_in_tracked_deletion(found, doc):
+                    # Replace this visible occurrence
+                    found.setString(new)
+                    count += 1
+
+                # Find next occurrence
+                # Note: We need to recreate the search after replacement
+                # to avoid issues with modified text ranges
+                search = doc.createSearchDescriptor()
+                search.SearchString = old
+                found = doc.findNext(found.getEnd(), search)
+
+            logger.info(f"Replaced {count} visible occurrences of '{old}' with '{new}' (Track Changes enabled)")
             return {
                 "success": True,
                 "count": count,
                 "old": old,
-                "new": new
+                "new": new,
+                "track_changes_active": True
             }
 
         except Exception as e:

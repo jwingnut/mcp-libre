@@ -98,24 +98,49 @@ curl -X POST http://localhost:8765/execute \
   }'
 ```
 
-## 🛠️ Available MCP Tools
+## 🛠️ Available MCP Tools (25 Total)
 
-### **Document Creation**
+### **Document Management (4 tools)**
 - `create_document_live`: Create new Writer, Calc, Impress, or Draw documents
-- Parameters: `doc_type` (writer|calc|impress|draw)
-
-### **Text Manipulation**
-- `insert_text_live`: Insert text at cursor or specific position
-- `format_text_live`: Apply formatting to selected text
-- `get_text_content_live`: Extract text content from document
-
-### **Document Information**
 - `get_document_info_live`: Get comprehensive document details
 - `list_open_documents`: List all currently open documents
+- Health check endpoint: `/health`
 
-### **File Operations**
+### **Document Content (3 tools)**
+- `insert_text_live`: Insert text at cursor or specific position
+- `get_text_content_live`: Extract text content from document
+- `format_text_live`: Apply formatting to selected text
+
+### **Save & Export (2 tools)**
 - `save_document_live`: Save active document
 - `export_document_live`: Export to PDF, DOCX, ODT, TXT, etc.
+
+### **Document Structure (4 tools)**
+- `get_paragraph_count_live`: Get total paragraph count
+- `get_document_outline_live`: Get headings with paragraph numbers and levels
+- `get_paragraph_live`: Get specific paragraph by number (1-indexed)
+- `get_paragraphs_range_live`: Get range of paragraphs
+
+### **Cursor Navigation (4 tools)**
+- `goto_paragraph_live`: Move cursor to paragraph n
+- `goto_position_live`: Move cursor to character position
+- `get_cursor_position_live`: Get current cursor position and paragraph
+- `get_context_around_cursor_live`: Get text context around cursor
+
+### **Text Selection (4 tools)**
+- `select_paragraph_live`: Select entire paragraph
+- `select_text_range_live`: Select character range
+- `delete_selection_live`: Delete selected text
+- `replace_selection_live`: Replace selected text
+
+### **Search & Replace (3 tools)**
+- `find_text_live`: Find all occurrences of text
+- `find_and_replace_live`: Replace first occurrence
+- `find_and_replace_all_live`: Replace all occurrences
+
+### **Comments (2 tools)**
+- `get_comments_live`: Get all document comments
+- `add_comment_live`: Add comment at cursor position
 
 ## 🔗 AI Assistant Configuration
 
