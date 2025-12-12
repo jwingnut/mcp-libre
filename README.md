@@ -6,55 +6,43 @@ A comprehensive Model Context Protocol (MCP) server that provides tools and reso
 [![LibreOffice](https://img.shields.io/badge/LibreOffice-24.2+-green.svg)](https://www.libreoffice.org/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2024--11--05-orange.svg)](https://spec.modelcontextprotocol.io/)
 
-## 📂 Repository Structure
-
-This repository is organized into logical directories:
-
-- **`src/`** - Core MCP server implementation
-- **`tests/`** - Test suite and validation scripts  
-- **`examples/`** - Demo scripts and usage examples
-- **`config/`** - Configuration templates for integrations
-- **`scripts/`** - Utility scripts for setup and management
-- **`docs/`** - Comprehensive documentation
-
-For detailed information, see [`docs/REPOSITORY_STRUCTURE.md`](docs/REPOSITORY_STRUCTURE.md).
-
 ## 🚀 Features
 
-### LibreOffice Extension (Plugin) - NEW! 🎉
+### LibreOffice Extension (Plugin) - Recommended!
 - **Native Integration**: Embedded MCP server directly in LibreOffice
 - **Real-time Editing**: Live document manipulation with instant visual feedback
 - **Performance**: 10x faster than external server (direct UNO API access)
+- **9 Consolidated Tools**: Reduced from 32 individual tools for better UX
+- **Track Changes Support**: Full revision tracking awareness
 - **Multi-document**: Work with all open LibreOffice documents
-- **Auto-start**: Automatically available when LibreOffice starts
 - **HTTP API**: External AI assistant access via localhost:8765
 
 ### Document Operations
 - **Create Documents**: New Writer, Calc, Impress, and Draw documents
-- **Read Content**: Extract text from any LibreOffice document
-- **Convert Formats**: Convert between 50+ formats (PDF, DOCX, HTML, etc.)
-- **Edit Documents**: Insert, append, or replace text in Writer documents
-- **Document Info**: Get detailed metadata about documents
+- **Read Content**: Extract text with visible_content for Track Changes awareness
+- **Navigate**: Paragraph-level navigation, cursor positioning, document outline
+- **Edit**: Insert, format, select, and replace text
+- **Search**: Find/replace with Track Changes awareness (skips tracked deletions)
+- **Comments**: Add and retrieve document annotations
+- **Track Changes**: Enable, disable, list, accept/reject revisions
 
-### Spreadsheet Operations
-- **Read Spreadsheets**: Extract data from Calc spreadsheets and Excel files
-- **Structured Data**: Get data as 2D arrays with row/column information
+## 🔧 9 Consolidated MCP Tools
 
-### Advanced Tools
-- **Document Search**: Find documents containing specific text
-- **Batch Convert**: Convert multiple documents simultaneously
-- **Merge Documents**: Combine multiple documents into one
-- **Document Analysis**: Get detailed statistics (word count, sentences, etc.)
+The MCP interface provides 9 logical tool groups (consolidated from 32 individual tools):
 
-### Live Viewing & Real-time Editing
-- **GUI Integration**: Open documents in LibreOffice for live viewing
-- **Real-time Updates**: See changes as AI assistants modify documents
-- **Change Monitoring**: Watch documents for modifications in real-time
-- **Interactive Sessions**: Create live editing sessions with automatic refresh
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `document` | create, info, list, content, status | Document management |
+| `structure` | outline, paragraph, range, count | Document navigation |
+| `cursor` | goto_paragraph, goto_position, position, context | Cursor control |
+| `selection` | paragraph, range, delete, replace | Text selection |
+| `search` | find, replace, replace_all | Search/replace (Track Changes aware) |
+| `track_changes` | status, enable, disable, list, accept, reject, accept_all, reject_all | Revision tracking |
+| `comments` | list, add | Comment management |
+| `save` | save, export | Save/export documents |
+| `text` | insert, format | Text insertion and formatting |
 
-### MCP Resources
-- **Document Discovery**: List all LibreOffice documents (`documents://`)
-- **Content Access**: Access specific document content (`document://{path}`)
+See [docs/TOOL_REFERENCE.md](docs/TOOL_REFERENCE.md) for complete documentation.
 
 ## 📋 Requirements
 
@@ -62,336 +50,147 @@ For detailed information, see [`docs/REPOSITORY_STRUCTURE.md`](docs/REPOSITORY_S
 - **Python**: 3.12+
 - **UV Package Manager**: For dependency management
 
-For detailed installation instructions for all platforms, run:
-```bash
-./mcp-helper.sh requirements
-```
-
 ## 🛠 Installation
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/patrup/mcp-libre/
-   cd mcp-libre
-   ```
+### LibreOffice Extension (Recommended)
 
-2. **Check prerequisites**:
-   ```bash
-   ./mcp-helper.sh requirements  # Show detailed requirements
-   ./mcp-helper.sh check         # Verify your system
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/jwingnut/mcp-libre.git
+cd mcp-libre
 
-3. **Install dependencies**:
-   ```bash
-   uv sync
-   ```
+# Build and install the LibreOffice extension
+cd plugin/
+./build.sh
+unopkg add ../build/libreoffice-mcp-extension-1.0.0.oxt
 
-4. **Make helper script executable**:
-   ```bash
-   chmod +x mcp-helper.sh
-   ```
+# Restart LibreOffice
+```
+
+After installation:
+1. Open LibreOffice Writer
+2. Go to **Tools > MCP Server > Start MCP Server**
+3. The HTTP API is now available at `http://localhost:8765`
+
+### FastMCP Bridge (for Claude Code)
+
+```bash
+# Install FastMCP
+pip install fastmcp httpx
+
+# Configure Claude Code
+claude mcp add libreoffice -- fastmcp run /path/to/libreoffice_mcp_server.py
+```
 
 ## 🎯 Quick Start
 
-### Test the Server
-```bash
-# Run functionality tests
-./mcp-helper.sh test
+### Using with Claude Code
 
-# Run interactive demo
-./mcp-helper.sh demo
+Once configured, you can use natural language commands:
+
+```
+"Get document info"
+→ document(action="info")
+
+"Find all occurrences of 'hello'"
+→ search(action="find", query="hello")
+
+"Enable track changes"
+→ track_changes(action="enable")
+
+"Go to paragraph 5 and get context"
+→ cursor(action="goto_paragraph", n=5)
+→ cursor(action="context")
 ```
 
-### Start MCP Server
+### HTTP API Examples
+
 ```bash
-# Standard MCP mode (stdio)
-python src/main.py
+# Check server status
+curl http://localhost:8765/health
 
-# Or using UV
-uv run python src/main.py
+# Get document info
+curl -X POST http://localhost:8765/tools/get_document_info_live -d '{}'
 
-# Show help and options
-python src/main.py --help
+# Find text
+curl -X POST http://localhost:8765/tools/find_text_live \
+  -H "Content-Type: application/json" \
+  -d '{"query": "hello"}'
 
-# Run tests
-python src/main.py --test
+# Enable Track Changes
+curl -X POST http://localhost:8765/tools/set_track_changes_live \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
 ```
 
-### Integration with Super Assistant
-```bash
-# Start the MCP proxy
-./mcp-helper.sh proxy
+## 📂 Repository Structure
 
-# Then configure Super Assistant extension:
-# Server URL: http://localhost:3006
 ```
-
-## 🔧 Available Tools
-
-| Tool | Description |
-|------|-------------|
-| `create_document` | Create new LibreOffice documents |
-| `read_document_text` | Extract text from documents |
-| `convert_document` | Convert between formats |
-| `get_document_info` | Get document metadata |
-| `read_spreadsheet_data` | Read spreadsheet data |
-| `insert_text_at_position` | Edit document text |
-| `search_documents` | Search documents by content |
-| `batch_convert_documents` | Batch format conversion |
-| `merge_text_documents` | Merge multiple documents |
-| `get_document_statistics` | Document analysis |
-| `open_document_in_libreoffice` | Open document in GUI for live viewing |
-| `create_live_editing_session` | Start live editing with real-time preview |
-| `watch_document_changes` | Monitor document changes in real-time |
-| `refresh_document_in_libreoffice` | Force document refresh in GUI |
+mcp-libre/
+├── plugin/                    # LibreOffice extension
+│   ├── pythonpath/
+│   │   ├── uno_bridge.py     # UNO API wrapper
+│   │   └── mcp_server.py     # HTTP API server
+│   ├── build.sh              # Build script
+│   └── README.md             # Plugin documentation
+├── libreoffice_mcp_server.py # FastMCP bridge (9 consolidated tools)
+├── docs/
+│   ├── TOOL_REFERENCE.md     # Complete tool documentation
+│   └── KNOWN_ISSUES_AND_ROADMAP.md
+├── src/                      # Legacy external server
+├── tests/                    # Test suite
+└── README.md
+```
 
 ## 📚 Documentation
 
-- **[Prerequisites](docs/PREREQUISITES.md)**: Quick reference for system requirements
-- **[Plugin Migration Guide](docs/PLUGIN_MIGRATION_GUIDE.md)**: Migrate from external server to plugin
-- **[Examples](docs/EXAMPLES.md)**: Code examples and usage patterns
-- **[Live Viewing Guide](docs/LIVE_VIEWING_GUIDE.md)**: See changes live in LibreOffice GUI
-- **[Super Assistant Setup](docs/SUPER_ASSISTANT_SETUP.md)**: Chrome extension integration
-- **[ChatGPT Browser Guide](docs/CHATGPT_BROWSER_GUIDE.md)**: Using with ChatGPT and alternatives
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)**: Common issues and solutions
-- **[Quick Start](docs/QUICK_START.md)**: Quick reference guide
-- **[Complete Solution](docs/COMPLETE_SOLUTION.md)**: Comprehensive overview
+- **[Tool Reference](docs/TOOL_REFERENCE.md)**: Complete documentation of all 9 tools
+- **[Plugin README](plugin/README.md)**: LibreOffice extension details
+- **[Known Issues & Roadmap](docs/KNOWN_ISSUES_AND_ROADMAP.md)**: Future plans
 
-## 🔗 Integration Options
+## 🆕 Recent Changes
 
-### 1. LibreOffice Extension (NEW - Recommended!) 🎉
+### v0.3.0 - Tool Consolidation
+- Consolidated 32 tools into 9 logical groups
+- Reduced permission prompts for better UX
+- Each tool uses `action` parameter for routing
 
-**The most powerful and efficient way to use the MCP server:**
+### v0.2.0 - Track Changes Awareness
+- Added 7 Track Changes management tools
+- Search/replace now skips tracked deletions
+- `get_paragraph` returns `visible_content` field
+- `find_text` returns `track_changes_active` field
 
-```bash
-# Build and install the LibreOffice extension
-cd plugin/
-./install.sh install
-
-# Test the extension
-./install.sh test
-```
-
-**Benefits of the Extension:**
-- **10x Performance**: Direct UNO API access (no subprocess overhead)
-- **Real-time Editing**: Live document manipulation in open LibreOffice windows
-- **Native Integration**: Appears in LibreOffice Tools menu
-- **Multi-document Support**: Work with all open documents simultaneously
-- **Auto-start**: Automatically starts with LibreOffice
-- **Advanced Features**: Full access to LibreOffice formatting and capabilities
-
-**Usage:**
-- The extension provides an HTTP API on `http://localhost:8765`
-- Configure your AI assistant to use this endpoint
-- Access controls via **Tools > MCP Server** in LibreOffice
-- Real-time document editing with instant visual feedback
-
-For detailed plugin information, see [`plugin/README.md`](plugin/README.md).
-
-### 2. Claude Desktop
-
-Generate configuration automatically:
-```bash
-./generate-config.sh claude
-# Creates ~/.config/claude/claude_desktop_config.json
-```
-
-Then restart Claude Desktop and start using LibreOffice commands:
-- *"Create a new Writer document and save it as project-report.odt"*
-- *"Convert my document to PDF format"*
-
-### 3. Super Assistant Chrome Extension
-
-Generate configuration and start proxy:
-```bash
-./generate-config.sh mcp
-npx @srbhptl39/mcp-superassistant-proxy@latest --config ~/Documents/mcp/mcp.config.json
-# Server URL: http://localhost:3006
-```
-
-### 4. Direct MCP Client
-```python
-from mcp.shared.memory import create_connected_server_and_client_session
-from libremcp import mcp
-
-async with client_session(mcp._mcp_server) as client:
-    result = await client.call_tool("create_document", {
-        "path": "/tmp/test.odt",
-        "doc_type": "writer",
-        "content": "Hello, World!"
-    })
-```
-
-## 🎨 Usage Examples
-
-### Natural Language (via Super Assistant)
-- *"Create a new Writer document with a project report"*
-- *"Convert my ODT file to PDF format"*
-- *"Search for documents containing 'budget' in my Documents folder"*
-- *"Get statistics for my essay - how many words?"*
-
-### Programmatic Usage
-```python
-from libremcp import create_document, read_document_text, convert_document
-
-# Create a document
-doc = create_document("/tmp/report.odt", "writer", "Project Report")
-
-# Read content
-content = read_document_text("/tmp/report.odt")
-print(f"Words: {content.word_count}")
-
-# Convert to PDF
-result = convert_document("/tmp/report.odt", "/tmp/report.pdf", "pdf")
-```
-
-## 📁 Supported File Formats
-
-### Input (Reading)
-- **LibreOffice**: `.odt`, `.ods`, `.odp`, `.odg`
-- **Microsoft Office**: `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`
-- **Text**: `.txt`, `.rtf`
-
-### Output (Conversion)
-- **PDF**: `.pdf`
-- **Microsoft Office**: `.docx`, `.xlsx`, `.pptx`
-- **Web**: `.html`, `.htm`
-- **Text**: `.txt`
-- **LibreOffice**: `.odt`, `.ods`, `.odp`, `.odg`
-- **Many others**: 50+ formats supported by LibreOffice
-
-## 🧪 Testing
-
-### LibreOffice Extension Testing
-```bash
-# Install and test the plugin
-cd plugin/
-./install.sh install    # Build and install extension
-./install.sh test       # Test functionality
-./install.sh status     # Check status
-./install.sh interactive # Interactive testing mode
-```
-
-### External Server Testing
-```bash
-# Show system requirements and installation guides
-./mcp-helper.sh requirements
-
-# Check dependencies and verify setup
-./mcp-helper.sh check
-
-# Run built-in functionality tests
-./mcp-helper.sh test
-
-# Interactive demo of all capabilities
-./mcp-helper.sh demo
-
-# Test specific functionality directly
-uv run python libremcp.py --test
-```
-
-## 🔧 Configuration
-
-### MCP Configuration for Integrations
-
-Generate personalized configuration files for Claude Desktop and/or Super Assistant:
-
-```bash
-# Generate both Claude Desktop and Super Assistant configs
-./generate-config.sh
-
-# Generate only Claude Desktop config
-./generate-config.sh claude
-
-# Generate only Super Assistant config  
-./generate-config.sh mcp
-
-# Generate Super Assistant config in custom location
-./generate-config.sh mcp /path/to/custom/directory
-```
-
-This automatically creates configurations with your actual project paths:
-- **Claude Desktop**: `~/.config/claude/claude_desktop_config.json`
-- **Super Assistant**: `~/Documents/mcp/mcp.config.json` (or custom location)
-
-### Environment Variables
-```bash
-export PYTHONPATH="/path/to/mcp-libre"
-export LIBREOFFICE_PATH="/usr/bin/libreoffice"  # Optional
-```
-
-### Custom Search Paths
-Edit `libremcp.py` to modify document discovery locations:
-```python
-search_paths = [
-    Path.home() / "Documents",
-    Path.home() / "Desktop",
-    Path("/custom/path"),
-    Path.cwd()
-]
-```
+### v0.1.0 - Initial Release
+- 25 individual MCP tools
+- HTTP API on localhost:8765
+- LibreOffice extension with UNO API integration
 
 ## 🛡 Security
 
 - **Local Execution**: All operations run locally
 - **File Permissions**: Limited to user's file access
 - **No Network**: No external network dependencies
-- **Temporary Files**: Automatically cleaned up
-
-## 🚨 Troubleshooting
-
-### LibreOffice Issues
-```bash
-# Check LibreOffice installation
-libreoffice --version
-libreoffice --headless --help
-
-# Test conversion manually
-libreoffice --headless --convert-to pdf document.odt
-```
-
-### Java Warnings
-- Java warnings are usually non-fatal
-- Core functionality works without Java
-- Install Java for full LibreOffice features
-
-### Permission Errors
-- Check file and directory permissions
-- Ensure LibreOffice can access document paths
-- Verify write permissions for output directories
+- **Email Privacy**: Uses GitHub noreply email for commits
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+4. Submit a pull request
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-The MIT License is a permissive license that allows:
-- ✅ Commercial use
-- ✅ Modification
-- ✅ Distribution
-- ✅ Private use
-
-For other license options, see [LICENSE_OPTIONS.md](LICENSE_OPTIONS.md).
-
 ## 🔗 Links
 
+- **Repository**: https://github.com/jwingnut/mcp-libre
 - **MCP Specification**: https://spec.modelcontextprotocol.io/
 - **LibreOffice**: https://www.libreoffice.org/
-- **FastMCP Framework**: https://github.com/modelcontextprotocol/python-sdk
-
-## 📞 Support
-
-- **Issues**: Use GitHub issues for bug reports
-- **Documentation**: See the `docs/` folder for detailed guides
-- **Examples**: Check `EXAMPLES.md` for usage patterns
+- **FastMCP**: https://github.com/modelcontextprotocol/python-sdk
 
 ---
 
-*LibreOffice MCP Server v0.1.0 - Bridging AI and Document Processing*
+*LibreOffice MCP Server v0.3.0 - AI-Powered Document Editing*
