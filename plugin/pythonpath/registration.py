@@ -13,16 +13,25 @@ import sys
 import os
 from com.sun.star.lang import XServiceInfo
 from com.sun.star.frame import XDispatchProvider, XDispatch
-from com.sun.star.lang import XInitialization
 
 # Add the pythonpath directory to sys.path for imports
 _this_dir = os.path.dirname(__file__)
 if _this_dir not in sys.path:
     sys.path.insert(0, _this_dir)
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
+# ── File-based logging so we can see what happens inside LO ──
+LOG_FILE = os.path.join(os.environ.get("TEMP", "/tmp"), "mcp_extension.log")
+_file_handler = None
+try:
+    _file_handler = logging.FileHandler(LOG_FILE, mode="w")
+    _file_handler.setLevel(logging.DEBUG)
+    _file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logging.getLogger().addHandler(_file_handler)
+    logging.getLogger().setLevel(logging.DEBUG)
+except Exception:
+    pass
 logger = logging.getLogger("MCPExtension")
+logger.info("=== Extension module loaded, log at %s ===", LOG_FILE)
 
 # Implementation name and service name for the extension
 IMPLEMENTATION_NAME = "org.mcp.libreoffice.MCPExtension"
@@ -80,19 +89,13 @@ def _stop_server():
             logger.error(traceback.format_exc())
 
 
-class MCPProtocolHandler(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, XInitialization):
+class MCPProtocolHandler(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch):
     """Protocol handler for MCP extension menu commands"""
 
     def __init__(self, ctx):
         self.ctx = ctx
         self.frame = None
-        logger.debug("MCPProtocolHandler created")
-
-    # XInitialization
-    def initialize(self, args):
-        if args:
-            self.frame = args[0]
-        logger.debug("MCPProtocolHandler initialized with frame")
+        logger.info("MCPProtocolHandler.__init__ called, ctx=%s", ctx)
 
     # XServiceInfo
     def getImplementationName(self):
@@ -106,8 +109,11 @@ class MCPProtocolHandler(unohelper.Base, XServiceInfo, XDispatchProvider, XDispa
 
     # XDispatchProvider
     def queryDispatch(self, url, target, flags):
-        logger.debug(f"queryDispatch: {url.Complete}")
-        if url.Protocol == "service:":
+        logger.info("queryDispatch: Complete=%r Protocol=%r Path=%r",
+                     url.Complete, url.Protocol, url.Path)
+        # Accept ALL service: URLs for our protocol
+        if url.Complete and "org.mcp.libreoffice.MCPExtension" in url.Complete:
+            logger.info("queryDispatch: ACCEPTING")
             return self
         return None
 
@@ -116,11 +122,11 @@ class MCPProtocolHandler(unohelper.Base, XServiceInfo, XDispatchProvider, XDispa
 
     # XDispatch
     def dispatch(self, url, args):
-        logger.info(f"dispatch called: {url.Complete}")
+        logger.info("dispatch called: Complete=%r", url.Complete)
         try:
             if "?" in url.Complete:
                 command = url.Complete.split("?")[1]
-                logger.info(f"Executing command: {command}")
+                logger.info("Executing command: %s", command)
 
                 if command == "start_mcp_server":
                     # Run in thread to not block UI
@@ -155,3 +161,13 @@ g_ImplementationHelper.addImplementation(
     IMPLEMENTATION_NAME,
     SERVICE_NAMES
 )
+logger.info("=== addImplementation completed ===")
+
+# ── Auto-start the MCP server on extension load ──
+logger.info("=== Auto-starting MCP server... ===")
+try:
+    _start_server()
+    logger.info("=== Auto-start complete, server_started=%s ===", _server_started)
+except Exception as e:
+    logger.error("=== Auto-start FAILED: %s ===", e)
+    logger.error(traceback.format_exc())

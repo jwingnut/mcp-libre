@@ -531,6 +531,120 @@ def test_reject_all_changes():
     return True
 
 
+# Paragraph Style Tools Tests
+
+def test_list_paragraph_styles():
+    """Test listing available paragraph styles"""
+    print("Testing list_paragraph_styles_live tool...")
+    result = make_request("/tools/list_paragraph_styles_live", method="POST", data={})
+
+    if "error" in result:
+        print(f"  ⚠ Error: {result['error']}")
+    elif result.get("success"):
+        count = result.get("count", 0)
+        builtin = result.get("builtin_count", 0)
+        user = result.get("user_defined_count", 0)
+        print(f"  ✓ Found {count} paragraph styles ({builtin} built-in, {user} user-defined)")
+        # Verify some expected built-in styles exist
+        style_names = [s["name"] for s in result.get("styles", [])]
+        expected = ["Heading 1", "Heading 2", "Standard", "Text body"]
+        found_expected = [s for s in expected if s in style_names]
+        print(f"  ✓ Standard styles found: {', '.join(found_expected)}")
+    else:
+        print(f"  ⚠ Unexpected result: {result}")
+    return True
+
+
+def test_apply_paragraph_style_by_selection():
+    """Test applying a paragraph style via selection"""
+    print("Testing format_paragraph_live via selection...")
+
+    # First ensure we have a document with paragraphs
+    make_request("/tools/create_document_live", method="POST", data={"doc_type": "writer"})
+    # Insert a paragraph to work with
+    make_request("/tools/insert_text_live", method="POST", data={"text": "Test Heading"})
+    make_request("/tools/insert_text_live", method="POST", data={"text": "\n"})
+    make_request("/tools/insert_text_live", method="POST", data={"text": "Test body paragraph"})
+
+    # Select the first paragraph
+    select_result = make_request("/tools/select_paragraph_live", method="POST", data={"n": 1})
+    if not select_result.get("success"):
+        print(f"  ⚠ Could not select paragraph: {select_result.get('error', 'unknown')}")
+        return True
+
+    # Apply heading style to the selection
+    result = make_request("/tools/format_paragraph_live", method="POST",
+                          data={"style_name": "Heading 1"})
+
+    if result.get("success"):
+        print(f"  ✓ Applied '{result.get('style_name')}' to {result.get('paragraph')}")
+    else:
+        print(f"  ⚠ Error: {result.get('error', 'unknown')}")
+
+    # Verify the style was applied by checking the outline
+    outline_result = make_request("/tools/get_document_outline_live", method="POST", data={})
+    if outline_result.get("success"):
+        headings = outline_result.get("outline", [])
+        if len(headings) > 0:
+            print(f"  ✓ Verified: heading appears in document outline ({len(headings)} heading(s))")
+        else:
+            print(f"  ⚠ Warning: heading not found in outline after applying style")
+
+    return True
+
+
+def test_apply_paragraph_style_by_number():
+    """Test applying a paragraph style directly by paragraph number"""
+    print("Testing format_paragraph_live via paragraph_n...")
+
+    # Apply Heading 2 to paragraph 3 directly (no selection needed)
+    result = make_request("/tools/format_paragraph_live", method="POST",
+                          data={"style_name": "Heading 2", "paragraph_n": 3})
+
+    if result.get("success"):
+        print(f"  ✓ Applied '{result.get('style_name')}' directly to paragraph {result.get('paragraph')}")
+    else:
+        print(f"  ⚠ Error (may need document with 3+ paragraphs): {result.get('error', 'unknown')}")
+
+    return True
+
+
+def test_get_paragraph_style():
+    """Test getting the style of a specific paragraph"""
+    print("Testing get_paragraph_style_live tool...")
+
+    # Query paragraph 1 (should have Heading 1 from previous test)
+    result = make_request("/tools/get_paragraph_style_live", method="POST",
+                          data={"paragraph_n": 1})
+
+    if result.get("success"):
+        style_name = result.get("style_name", "unknown")
+        print(f"  ✓ Paragraph {result.get('paragraph')} has style: '{style_name}'")
+    else:
+        print(f"  ⚠ Error: {result.get('error', 'unknown')}")
+
+    return True
+
+
+def test_apply_paragraph_style_invalid_name():
+    """Test applying an invalid style name returns a helpful error"""
+    print("Testing format_paragraph_live with invalid style name...")
+
+    result = make_request("/tools/format_paragraph_live", method="POST",
+                          data={"style_name": "NonExistentStyleXYZ"})
+
+    if not result.get("success"):
+        error_msg = result.get("error", "")
+        if "not found" in error_msg.lower():
+            print(f"  ✓ Got expected error for invalid style name")
+        else:
+            print(f"  ⚠ Error but unexpected message: {error_msg}")
+    else:
+        print(f"  ⚠ Expected failure but got success: {result}")
+
+    return True
+
+
 def run_all_tests():
     """Run all tests"""
     print("=" * 60)
@@ -588,6 +702,12 @@ def run_all_tests():
         test_reject_tracked_change,
         test_accept_all_changes,
         test_reject_all_changes,
+        # Paragraph Style Tools
+        test_list_paragraph_styles,
+        test_apply_paragraph_style_by_selection,
+        test_apply_paragraph_style_by_number,
+        test_get_paragraph_style,
+        test_apply_paragraph_style_invalid_name,
     ]
 
     passed = 0

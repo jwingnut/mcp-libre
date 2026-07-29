@@ -177,8 +177,9 @@ class UNOBridge:
                 text_obj = doc.getText()
 
                 if position is None:
-                    # Insert at current cursor position
-                    cursor = doc.getCurrentController().getViewCursor()
+                    # Insert at end of document (most reliable)
+                    cursor = text_obj.createTextCursor()
+                    cursor.gotoEnd(False)
                 else:
                     # Insert at specific position
                     cursor = text_obj.createTextCursor()
@@ -195,7 +196,9 @@ class UNOBridge:
                 
         except Exception as e:
             logger.error(f"Failed to insert text: {e}")
-            return {"success": False, "error": str(e)}
+            import traceback as _tb
+            logger.error(_tb.format_exc())
+            return {"success": False, "error": str(e) or repr(e)}
     
     def format_text(self, formatting: Dict[str, Any], doc: Any = None) -> Dict[str, Any]:
         """
@@ -244,6 +247,480 @@ class UNOBridge:
             
         except Exception as e:
             logger.error(f"Failed to format text: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def set_paragraph_style(self, style_name: str, paragraph_n: Optional[int] = None,
+                            doc: Any = None) -> Dict[str, Any]:
+        """
+        Apply a paragraph style (e.g., "Heading 1") to selected text or a specific paragraph.
+
+        Args:
+            style_name: Name of the paragraph style to apply (e.g. "Heading 1", "Heading 2", "Title")
+            paragraph_n: Optional paragraph number (1-indexed) to target directly.
+                         If provided, selects that paragraph before applying the style.
+            doc: Document to work with (None for active document)
+
+        Returns:
+            Result dictionary with success status and paragraph number
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+            if self._get_document_type(doc) != "writer":
+                return {"success": False, "error": "Paragraph styles only supported for Writer documents"}
+
+            # Validate that the style exists in the document
+            style_families = doc.getStyleFamilies()
+            para_styles = style_families.getByName("ParagraphStyles")
+            if not para_styles.hasByName(style_name):
+                # Collect a few known style names as hints
+                known = ["Heading 1", "Heading 2", "Heading 3", "Title", "Subtitle",
+                         "Text body", "Standard"]
+                existing = [s for s in known if para_styles.hasByName(s)]
+                hint = ", ".join(existing[:6]) if existing else "none of the expected styles found"
+                return {
+                    "success": False,
+                    "error": f"Paragraph style '{style_name}' not found in document. "
+                             f"Known styles available: {hint}"
+                }
+
+            # If paragraph_n is given, select that paragraph first
+            applied_paragraph = None
+            if paragraph_n is not None:
+                select_result = self.select_paragraph(paragraph_n, doc)
+                if not select_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": f"Failed to select paragraph {paragraph_n}: "
+                                 f"{select_result.get('error', 'unknown error')}"
+                    }
+                applied_paragraph = paragraph_n
+
+            # Get current selection and apply the style
+            selection = doc.getCurrentController().getSelection()
+            if selection.getCount() == 0:
+                return {"success": False, "error": "No text selected. "
+                         "Select a paragraph first or pass paragraph_n to target directly."}
+
+            text_range = selection.getByIndex(0)
+            text_range.ParaStyleName = style_name
+
+            # Determine which paragraph was affected
+            if applied_paragraph is None:
+                applied_paragraph = "current selection"
+
+            logger.info(f"Applied paragraph style '{style_name}' to paragraph {applied_paragraph}")
+            return {
+                "success": True,
+                "message": f"Applied paragraph style '{style_name}'",
+                "paragraph": applied_paragraph,
+                "style_name": style_name
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to set paragraph style: {e}")
+            return {"success": False, "error": str(e)}
+
+    def list_paragraph_styles(self, doc: Any = None) -> Dict[str, Any]:
+        """
+        List all available paragraph styles in the document.
+
+        Args:
+            doc: Document to query (None for active document)
+
+        Returns:
+            Result dictionary with list of style names and count
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+            if self._get_document_type(doc) != "writer":
+                return {"success": False, "error": "Paragraph styles only supported for Writer documents"}
+
+            style_families = doc.getStyleFamilies()
+            para_styles = style_families.getByName("ParagraphStyles")
+
+            styles = []
+            style_names = para_styles.getElementNames()
+            for name in style_names:
+                styles.append({"name": name})
+
+            styles.sort(key=lambda x: x["name"])
+
+            logger.info(f"Found {len(styles)} paragraph styles")
+            return {
+                "success": True,
+                "styles": styles,
+                "count": len(styles)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to list paragraph styles: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_paragraph_style(self, paragraph_n: Optional[int] = None,
+                            doc: Any = None) -> Dict[str, Any]:
+        """
+        Get the paragraph style name of a specific paragraph or the current selection.
+
+        Args:
+            paragraph_n: Optional paragraph number (1-indexed) to query.
+                         If None, queries the current selection.
+            doc: Document to query (None for active document)
+
+        Returns:
+            Result dictionary with style_name and paragraph number
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+            if self._get_document_type(doc) != "writer":
+                return {"success": False, "error": "Paragraph styles only supported for Writer documents"}
+
+            queried_paragraph = paragraph_n
+
+            if paragraph_n is not None:
+                # Find the specific paragraph
+                text = doc.getText()
+                enum = text.createEnumeration()
+                current = 0
+                target_para = None
+                while enum.hasMoreElements():
+                    para = enum.nextElement()
+                    if hasattr(para, 'supportsService') and para.supportsService("com.sun.star.text.Paragraph"):
+                        current += 1
+                        if current == paragraph_n:
+                            target_para = para
+                            break
+
+                if target_para is None:
+                    return {"success": False, "error": f"Paragraph {paragraph_n} out of range. "
+                                                         f"Valid range: 1-{current}"}
+
+                style_name = target_para.ParaStyleName if hasattr(target_para, 'ParaStyleName') else ""
+            else:
+                # Query current selection
+                selection = doc.getCurrentController().getSelection()
+                if selection.getCount() == 0:
+                    return {"success": False, "error": "No text selected. "
+                             "Select a paragraph first or pass paragraph_n to query directly."}
+
+                text_range = selection.getByIndex(0)
+                style_name = text_range.ParaStyleName if hasattr(text_range, 'ParaStyleName') else ""
+                queried_paragraph = "current selection"
+
+            logger.info(f"Paragraph {queried_paragraph} has style: '{style_name}'")
+            return {
+                "success": True,
+                "paragraph": queried_paragraph,
+                "style_name": style_name
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get paragraph style: {e}")
+            return {"success": False, "error": str(e)}
+
+    # ── Paragraph Style Management ───────────────────────────────────────
+
+    # Alignment constants for UNO ParagraphAdjust
+    _ALIGNMENT_VALUES = {
+        "left": 0,
+        "right": 1,
+        "center": 2,
+        "justify": 3,
+    }
+
+    def get_style_properties(self, style_name: str, doc: Any = None) -> Dict[str, Any]:
+        """
+        Get all properties of a named paragraph style.
+
+        Args:
+            style_name: Name of the paragraph style to inspect
+            doc: Document (None for active document)
+
+        Returns:
+            Result dictionary with style properties
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+            if self._get_document_type(doc) != "writer":
+                return {"success": False, "error": "Paragraph styles only supported for Writer documents"}
+
+            style_families = doc.getStyleFamilies()
+            para_styles = style_families.getByName("ParagraphStyles")
+
+            if not para_styles.hasByName(style_name):
+                return {"success": False, "error": f"Style '{style_name}' not found"}
+
+            style = para_styles.getByName(style_name)
+
+            # Read all accessible properties
+            props = {
+                "name": style_name,
+                "parent_style": getattr(style, 'ParentStyle', '') if hasattr(style, 'ParentStyle') else '',
+                "font_name": getattr(style, 'CharFontName', '') if hasattr(style, 'CharFontName') else '',
+                "font_size": getattr(style, 'CharHeight', 0.0) if hasattr(style, 'CharHeight') else 0.0,
+                "bold": getattr(style, 'CharWeight', 100.0) if hasattr(style, 'CharWeight') else 100.0,
+                "italic": getattr(style, 'CharPosture', 0) if hasattr(style, 'CharPosture') else 0,
+                "underline": getattr(style, 'CharUnderline', 0) if hasattr(style, 'CharUnderline') else 0,
+                "alignment": getattr(style, 'ParaAdjust', -1) if hasattr(style, 'ParaAdjust') else -1,
+            }
+
+            # Convert numeric values to human-readable
+            props["bold"] = props["bold"] > 120.0  # > 120 = bold
+            props["italic"] = props["italic"] == 2  # 2 = ITALIC
+            props["underline"] = props["underline"] != 0  # non-zero = underlined
+            alignment_map = {0: "left", 1: "right", 2: "center", 3: "justify"}
+            props["alignment"] = alignment_map.get(props["alignment"], "unknown")
+
+            logger.info(f"Retrieved properties for style '{style_name}'")
+            return {"success": True, "style_name": style_name, "properties": props}
+
+        except Exception as e:
+            logger.error(f"Failed to get style properties: {e}")
+            return {"success": False, "error": str(e)}
+
+    def create_paragraph_style(self, style_name: str, parent_style: str = "Standard",
+                               font_name: Optional[str] = None,
+                               font_size: Optional[float] = None,
+                               bold: Optional[bool] = None,
+                               italic: Optional[bool] = None,
+                               underline: Optional[bool] = None,
+                               alignment: Optional[str] = None,
+                               doc: Any = None) -> Dict[str, Any]:
+        """
+        Create a new paragraph style in the document.
+
+        Args:
+            style_name: Name for the new style (must not already exist)
+            parent_style: Parent style to inherit from (default: "Standard")
+            font_name: Font family name (optional)
+            font_size: Font size in points (optional)
+            bold: Bold weight (optional)
+            italic: Italic posture (optional)
+            underline: Single underline (optional)
+            alignment: "left", "right", "center", or "justify" (optional)
+            doc: Document (None for active document)
+
+        Returns:
+            Result dictionary
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+            if self._get_document_type(doc) != "writer":
+                return {"success": False, "error": "Paragraph styles only supported for Writer documents"}
+
+            style_families = doc.getStyleFamilies()
+            para_styles = style_families.getByName("ParagraphStyles")
+
+            if para_styles.hasByName(style_name):
+                return {"success": False, "error": f"Style '{style_name}' already exists. "
+                         "Use edit_paragraph_style to modify it."}
+
+            # Validate parent style exists
+            if not para_styles.hasByName(parent_style):
+                return {"success": False, "error": f"Parent style '{parent_style}' not found"}
+
+            # Validate alignment value if provided
+            if alignment is not None and alignment not in self._ALIGNMENT_VALUES:
+                valid = ", ".join(self._ALIGNMENT_VALUES.keys())
+                return {"success": False, "error": f"Invalid alignment '{alignment}'. "
+                         f"Valid values: {valid}"}
+
+            # Create the style object
+            # Use the document itself as a factory (XMultiServiceFactory)
+            style = None
+            try:
+                style = doc.createInstance("com.sun.star.style.ParagraphStyle")
+            except Exception:
+                pass
+
+            if style is None:
+                # Fallback: try ServiceManager
+                try:
+                    style = self.smgr.createInstanceWithContext(
+                        "com.sun.star.style.ParagraphStyle", self.ctx)
+                except Exception:
+                    pass
+
+            if style is None:
+                return {"success": False,
+                        "error": "Failed to create paragraph style object. "
+                                 "The UNO service 'com.sun.star.style.ParagraphStyle' "
+                                 "could not be instantiated."}
+
+            style.ParentStyle = parent_style
+
+            # Apply character-level properties
+            if font_name is not None:
+                style.CharFontName = font_name
+            if font_size is not None:
+                style.CharHeight = font_size
+            if bold is not None:
+                style.CharWeight = 150.0 if bold else 100.0
+            if italic is not None:
+                style.CharPosture = 2 if italic else 0
+            if underline is not None:
+                style.CharUnderline = 1 if underline else 0
+
+            # Apply paragraph-level properties
+            if alignment is not None:
+                style.ParaAdjust = self._ALIGNMENT_VALUES[alignment]
+
+            # Insert into the document
+            para_styles.insertByName(style_name, style)
+
+            logger.info(f"Created paragraph style '{style_name}' (parent: {parent_style})")
+            return {
+                "success": True,
+                "message": f"Created paragraph style '{style_name}'",
+                "style_name": style_name,
+                "parent_style": parent_style
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to create paragraph style: {e}")
+            return {"success": False, "error": str(e)}
+
+    def edit_paragraph_style(self, style_name: str, parent_style: Optional[str] = None,
+                             font_name: Optional[str] = None,
+                             font_size: Optional[float] = None,
+                             bold: Optional[bool] = None,
+                             italic: Optional[bool] = None,
+                             underline: Optional[bool] = None,
+                             alignment: Optional[str] = None,
+                             doc: Any = None) -> Dict[str, Any]:
+        """
+        Modify an existing paragraph style's properties.
+
+        Args:
+            style_name: Name of the existing style to modify
+            parent_style: New parent style (optional)
+            font_name: Font family name (optional)
+            font_size: Font size in points (optional)
+            bold: Bold weight (optional)
+            italic: Italic posture (optional)
+            underline: Single underline (optional)
+            alignment: "left", "right", "center", or "justify" (optional)
+            doc: Document (None for active document)
+
+        Returns:
+            Result dictionary
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+            if self._get_document_type(doc) != "writer":
+                return {"success": False, "error": "Paragraph styles only supported for Writer documents"}
+
+            style_families = doc.getStyleFamilies()
+            para_styles = style_families.getByName("ParagraphStyles")
+
+            if not para_styles.hasByName(style_name):
+                return {"success": False, "error": f"Style '{style_name}' not found. "
+                         "Use create_paragraph_style to create it first."}
+
+            style = para_styles.getByName(style_name)
+            changed = []
+
+            if parent_style is not None:
+                if not para_styles.hasByName(parent_style):
+                    return {"success": False, "error": f"Parent style '{parent_style}' not found"}
+                style.ParentStyle = parent_style
+                changed.append("parent_style")
+
+            if font_name is not None:
+                style.CharFontName = font_name
+                changed.append("font_name")
+            if font_size is not None:
+                style.CharHeight = font_size
+                changed.append("font_size")
+            if bold is not None:
+                style.CharWeight = 150.0 if bold else 100.0
+                changed.append("bold")
+            if italic is not None:
+                style.CharPosture = 2 if italic else 0
+                changed.append("italic")
+            if underline is not None:
+                style.CharUnderline = 1 if underline else 0
+                changed.append("underline")
+            if alignment is not None:
+                if alignment not in self._ALIGNMENT_VALUES:
+                    valid = ", ".join(self._ALIGNMENT_VALUES.keys())
+                    return {"success": False, "error": f"Invalid alignment '{alignment}'. "
+                             f"Valid values: {valid}"}
+                style.ParaAdjust = self._ALIGNMENT_VALUES[alignment]
+                changed.append("alignment")
+
+            if not changed:
+                return {"success": False, "error": "No properties specified to change"}
+
+            logger.info(f"Edited paragraph style '{style_name}': changed {changed}")
+            return {
+                "success": True,
+                "message": f"Updated paragraph style '{style_name}'",
+                "style_name": style_name,
+                "changed": changed
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to edit paragraph style: {e}")
+            return {"success": False, "error": str(e)}
+
+    def delete_paragraph_style(self, style_name: str, doc: Any = None) -> Dict[str, Any]:
+        """
+        Delete a paragraph style from the document.
+
+        Args:
+            style_name: Name of the style to delete
+            doc: Document (None for active document)
+
+        Returns:
+            Result dictionary
+        """
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+
+            if not doc:
+                return {"success": False, "error": "No document available"}
+            if self._get_document_type(doc) != "writer":
+                return {"success": False, "error": "Paragraph styles only supported for Writer documents"}
+
+            style_families = doc.getStyleFamilies()
+            para_styles = style_families.getByName("ParagraphStyles")
+
+            if not para_styles.hasByName(style_name):
+                return {"success": False, "error": f"Style '{style_name}' not found"}
+
+            para_styles.removeByName(style_name)
+
+            logger.info(f"Deleted paragraph style '{style_name}'")
+            return {"success": True, "message": f"Deleted paragraph style '{style_name}'",
+                    "style_name": style_name}
+
+        except Exception as e:
+            logger.error(f"Failed to delete paragraph style: {e}")
             return {"success": False, "error": str(e)}
     
     def save_document(self, doc: Any = None, file_path: Optional[str] = None) -> Dict[str, Any]:
@@ -349,14 +826,30 @@ class UNOBridge:
                         hasattr(doc, 'getText')
 
             if is_writer:
-                text = doc.getText().getString()
-                return {"success": True, "content": text, "length": len(text)}
+                text_obj = doc.getText()
+                # Try getting string directly first
+                content = text_obj.getString()
+                # If empty, try iterating through text portions (handles tables, frames, etc.)
+                if not content:
+                    try:
+                        portions = []
+                        enum = text_obj.createEnumeration()
+                        while enum.hasMoreElements():
+                            portion = enum.nextElement()
+                            if hasattr(portion, 'getString'):
+                                portions.append(portion.getString())
+                        content = "".join(portions)
+                    except Exception:
+                        pass
+                return {"success": True, "content": content, "length": len(content)}
             else:
                 return {"success": False, "error": f"Text extraction not supported for {self._get_document_type(doc)}"}
                 
         except Exception as e:
             logger.error(f"Failed to get text content: {e}")
-            return {"success": False, "error": str(e)}
+            import traceback as _tb
+            logger.error(_tb.format_exc())
+            return {"success": False, "error": str(e) or repr(e)}
     
     def get_comments(self, doc: Any = None) -> Dict[str, Any]:
         """Get all comments/annotations from the document"""
@@ -1910,6 +2403,151 @@ class UNOBridge:
         except Exception as e:
             logger.error(f"Failed to find and replace all: {e}")
             return {"success": False, "error": str(e)}
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Calc / Spreadsheet Operations
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _get_sheet(self, doc: Any, sheet_name: Optional[str] = None) -> Any:
+        """Helper: get a sheet by name, or the active sheet."""
+        sheets = doc.getSheets()
+        if sheet_name:
+            return sheets.getByName(sheet_name)
+        # Get active sheet via controller
+        controller = doc.getCurrentController()
+        return controller.getActiveSheet()
+
+    def get_cell_value(self, sheet_name: Optional[str], cell_address: str,
+                       doc: Any = None) -> Dict[str, Any]:
+        """Get the value of a single cell (e.g., 'A1', 'Sheet1.B5')."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+
+            # Handle "Sheet1.A1" notation
+            if "." in cell_address and not sheet_name:
+                sheet_name, cell_address = cell_address.split(".", 1)
+
+            sheet = self._get_sheet(doc, sheet_name)
+            actual_sheet = sheet.getName()
+            cell = sheet.getCellRangeByName(cell_address)
+            # Determine value type
+            cell_type = cell.getType().value if hasattr(cell.getType(), 'value') else "unknown"
+            if cell_type == "VALUE" or cell_type == 0:
+                val = cell.getValue()
+            elif cell_type == "FORMULA" or cell_type == 3:
+                val = cell.getFormula()
+            else:
+                val = cell.getString()
+
+            return {
+                "success": True,
+                "cell": cell_address,
+                "sheet": actual_sheet,
+                "value": val,
+                "type": str(cell.getType()) if hasattr(cell, 'getType') else "unknown"
+            }
+        except Exception as e:
+            logger.error(f"get_cell_value failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def set_cell_value(self, sheet_name: Optional[str], cell_address: str,
+                       value, doc: Any = None) -> Dict[str, Any]:
+        """Set the value of a single cell."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+
+            if "." in cell_address and not sheet_name:
+                sheet_name, cell_address = cell_address.split(".", 1)
+
+            sheet = self._get_sheet(doc, sheet_name)
+            cell = sheet.getCellRangeByName(cell_address)
+            if isinstance(value, (int, float)):
+                cell.setValue(float(value))
+            else:
+                cell.setFormula(str(value))
+            return {"success": True, "cell": cell_address, "sheet": sheet.getName()}
+        except Exception as e:
+            logger.error(f"set_cell_value failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_cell_range(self, sheet_name: Optional[str], range_address: str,
+                       doc: Any = None) -> Dict[str, Any]:
+        """Get a rectangular range of cells as a 2D array."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+
+            if "." in range_address and not sheet_name:
+                sheet_name, range_address = range_address.split(".", 1)
+
+            sheet = self._get_sheet(doc, sheet_name)
+            cell_range = sheet.getCellRangeByName(range_address)
+            data = cell_range.getDataArray()  # returns tuple of tuples
+            # Convert to list of lists
+            result = [list(row) for row in data]
+            return {
+                "success": True,
+                "range": range_address,
+                "sheet": sheet.getName(),
+                "rows": len(result),
+                "cols": len(result[0]) if result else 0,
+                "data": result
+            }
+        except Exception as e:
+            logger.error(f"get_cell_range failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def list_sheets(self, doc: Any = None) -> Dict[str, Any]:
+        """List all sheet names in the document."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+
+            sheets = doc.getSheets()
+            names = [sheets.getByIndex(i).getName() for i in range(sheets.getCount())]
+            active = self.get_active_sheet_name(doc).get("name", "")
+            return {"success": True, "sheets": names, "active": active, "count": len(names)}
+        except Exception as e:
+            logger.error(f"list_sheets failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_active_sheet_name(self, doc: Any = None) -> Dict[str, Any]:
+        """Get the name of the currently active sheet."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            controller = doc.getCurrentController()
+            sheet = controller.getActiveSheet()
+            return {"success": True, "name": sheet.getName()}
+        except Exception as e:
+            logger.error(f"get_active_sheet_name failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _is_calc(self, doc: Any) -> bool:
+        """Check if document is a Calc spreadsheet."""
+        return self._get_document_type(doc) == "calc"
+
+    # ═══════════════════════════════════════════════════════════════════════
 
     def _get_document_type(self, doc: Any) -> str:
         """Determine document type"""
