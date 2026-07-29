@@ -107,6 +107,168 @@ class LibreOfficeMCPServer:
             "handler": self.format_text_live
         }
         
+        # Paragraph style tools
+        self.tools["format_paragraph_live"] = {
+            "description": "Apply a paragraph style (e.g., Heading 1) to selected text or a specific paragraph",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "style_name": {
+                        "type": "string",
+                        "description": "Name of the paragraph style to apply (e.g. 'Heading 1', 'Heading 2', 'Title', 'Text body')"
+                    },
+                    "paragraph_n": {
+                        "type": "integer",
+                        "description": "Optional paragraph number (1-indexed) to target directly instead of current selection"
+                    }
+                },
+                "required": ["style_name"]
+            },
+            "handler": self.format_paragraph_live
+        }
+        
+        self.tools["list_paragraph_styles_live"] = {
+            "description": "List all available paragraph styles in the active document (built-in and user-defined)",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.list_paragraph_styles_live
+        }
+        
+        self.tools["get_paragraph_style_live"] = {
+            "description": "Get the paragraph style name of a specific paragraph or the current selection",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paragraph_n": {
+                        "type": "integer",
+                        "description": "Optional paragraph number (1-indexed) to query. If not provided, queries the current selection."
+                    }
+                }
+            },
+            "handler": self.get_paragraph_style_live
+        }
+        
+        self.tools["create_paragraph_style_live"] = {
+            "description": "Create a new paragraph style in the active document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "style_name": {
+                        "type": "string",
+                        "description": "Name for the new style (must not already exist)"
+                    },
+                    "parent_style": {
+                        "type": "string",
+                        "description": "Parent style to inherit from (default: 'Standard')",
+                        "default": "Standard"
+                    },
+                    "font_name": {
+                        "type": "string",
+                        "description": "Font family name (optional)"
+                    },
+                    "font_size": {
+                        "type": "number",
+                        "description": "Font size in points (optional)"
+                    },
+                    "bold": {
+                        "type": "boolean",
+                        "description": "Bold weight (optional)"
+                    },
+                    "italic": {
+                        "type": "boolean",
+                        "description": "Italic posture (optional)"
+                    },
+                    "underline": {
+                        "type": "boolean",
+                        "description": "Single underline (optional)"
+                    },
+                    "alignment": {
+                        "type": "string",
+                        "enum": ["left", "right", "center", "justify"],
+                        "description": "Paragraph alignment (optional)"
+                    }
+                },
+                "required": ["style_name"]
+            },
+            "handler": self.create_paragraph_style_live
+        }
+        
+        self.tools["edit_paragraph_style_live"] = {
+            "description": "Modify an existing paragraph style's properties",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "style_name": {
+                        "type": "string",
+                        "description": "Name of the existing style to modify"
+                    },
+                    "parent_style": {
+                        "type": "string",
+                        "description": "New parent style (optional)"
+                    },
+                    "font_name": {
+                        "type": "string",
+                        "description": "Font family name (optional)"
+                    },
+                    "font_size": {
+                        "type": "number",
+                        "description": "Font size in points (optional)"
+                    },
+                    "bold": {
+                        "type": "boolean",
+                        "description": "Bold weight (optional)"
+                    },
+                    "italic": {
+                        "type": "boolean",
+                        "description": "Italic posture (optional)"
+                    },
+                    "underline": {
+                        "type": "boolean",
+                        "description": "Single underline (optional)"
+                    },
+                    "alignment": {
+                        "type": "string",
+                        "enum": ["left", "right", "center", "justify"],
+                        "description": "Paragraph alignment (optional)"
+                    }
+                },
+                "required": ["style_name"]
+            },
+            "handler": self.edit_paragraph_style_live
+        }
+        
+        self.tools["delete_paragraph_style_live"] = {
+            "description": "Delete a paragraph style from the active document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "style_name": {
+                        "type": "string",
+                        "description": "Name of the style to delete"
+                    }
+                },
+                "required": ["style_name"]
+            },
+            "handler": self.delete_paragraph_style_live
+        }
+        
+        self.tools["get_style_properties_live"] = {
+            "description": "Get all properties (font, size, bold, italic, underline, alignment, parent) of a named paragraph style",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "style_name": {
+                        "type": "string",
+                        "description": "Name of the paragraph style to inspect"
+                    }
+                },
+                "required": ["style_name"]
+            },
+            "handler": self.get_style_properties_live
+        }
+        
         # Document saving tools
         self.tools["save_document_live"] = {
             "description": "Save the currently active document",
@@ -501,6 +663,78 @@ class LibreOfficeMCPServer:
             "handler": self.reject_all_changes_live
         }
 
+        # ── Calc / Spreadsheet Tools ──
+
+        self.tools["get_cell_value_live"] = {
+            "description": "Get the value of a cell in a Calc spreadsheet (e.g., 'A1' or 'Sheet1.B5')",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell_address": {
+                        "type": "string",
+                        "description": "Cell address like 'A1', 'B5', or 'Sheet1.A1'"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet name (optional; uses active sheet or address prefix if omitted)"
+                    }
+                },
+                "required": ["cell_address"]
+            },
+            "handler": self.get_cell_value_live
+        }
+
+        self.tools["set_cell_value_live"] = {
+            "description": "Set the value of a cell in a Calc spreadsheet",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell_address": {
+                        "type": "string",
+                        "description": "Cell address like 'A1' or 'Sheet1.B5'"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Value to set (number or text)"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet name (optional)"
+                    }
+                },
+                "required": ["cell_address", "value"]
+            },
+            "handler": self.set_cell_value_live
+        }
+
+        self.tools["get_cell_range_live"] = {
+            "description": "Get a rectangular range of cells as a 2D array (e.g., 'A1:C10' or 'Sheet1.A1:C10')",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_address": {
+                        "type": "string",
+                        "description": "Range like 'A1:B10' or 'Sheet1.A1:B10'"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet name (optional)"
+                    }
+                },
+                "required": ["range_address"]
+            },
+            "handler": self.get_cell_range_live
+        }
+
+        self.tools["list_sheets_live"] = {
+            "description": "List all sheet names in the current Calc document",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "handler": self.list_sheets_live
+        }
+
         logger.info(f"Registered {len(self.tools)} MCP tools")
     
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -582,6 +816,54 @@ class LibreOfficeMCPServer:
     def format_text_live(self, **formatting) -> Dict[str, Any]:
         """Apply formatting to selected text"""
         return self.uno_bridge.format_text(formatting)
+    
+    def format_paragraph_live(self, style_name: str, paragraph_n: Optional[int] = None) -> Dict[str, Any]:
+        """Apply a paragraph style to selected text or a specific paragraph"""
+        return self.uno_bridge.set_paragraph_style(style_name, paragraph_n)
+    
+    def list_paragraph_styles_live(self) -> Dict[str, Any]:
+        """List all available paragraph styles"""
+        return self.uno_bridge.list_paragraph_styles()
+    
+    def get_paragraph_style_live(self, paragraph_n: Optional[int] = None) -> Dict[str, Any]:
+        """Get the paragraph style of a specific paragraph or current selection"""
+        return self.uno_bridge.get_paragraph_style(paragraph_n)
+    
+    def create_paragraph_style_live(self, style_name: str, parent_style: str = "Standard",
+                                    font_name: Optional[str] = None,
+                                    font_size: Optional[float] = None,
+                                    bold: Optional[bool] = None,
+                                    italic: Optional[bool] = None,
+                                    underline: Optional[bool] = None,
+                                    alignment: Optional[str] = None) -> Dict[str, Any]:
+        """Create a new paragraph style"""
+        return self.uno_bridge.create_paragraph_style(
+            style_name=style_name, parent_style=parent_style,
+            font_name=font_name, font_size=font_size,
+            bold=bold, italic=italic, underline=underline,
+            alignment=alignment)
+    
+    def edit_paragraph_style_live(self, style_name: str, parent_style: Optional[str] = None,
+                                  font_name: Optional[str] = None,
+                                  font_size: Optional[float] = None,
+                                  bold: Optional[bool] = None,
+                                  italic: Optional[bool] = None,
+                                  underline: Optional[bool] = None,
+                                  alignment: Optional[str] = None) -> Dict[str, Any]:
+        """Modify an existing paragraph style"""
+        return self.uno_bridge.edit_paragraph_style(
+            style_name=style_name, parent_style=parent_style,
+            font_name=font_name, font_size=font_size,
+            bold=bold, italic=italic, underline=underline,
+            alignment=alignment)
+    
+    def delete_paragraph_style_live(self, style_name: str) -> Dict[str, Any]:
+        """Delete a user-defined paragraph style"""
+        return self.uno_bridge.delete_paragraph_style(style_name)
+    
+    def get_style_properties_live(self, style_name: str) -> Dict[str, Any]:
+        """Get all properties of a named paragraph style"""
+        return self.uno_bridge.get_style_properties(style_name)
     
     def save_document_live(self, file_path: Optional[str] = None) -> Dict[str, Any]:
         """Save the currently active document"""
@@ -726,6 +1008,29 @@ class LibreOfficeMCPServer:
     def reject_all_changes_live(self) -> Dict[str, Any]:
         """Reject all tracked changes in the document"""
         return self.uno_bridge.reject_all_changes()
+
+    # ── Calc / Spreadsheet Handlers ──
+
+    def get_cell_value_live(self, cell_address: str, sheet_name: str = None) -> Dict[str, Any]:
+        """Get the value of a cell in a Calc spreadsheet"""
+        return self.uno_bridge.get_cell_value(sheet_name, cell_address)
+
+    def set_cell_value_live(self, cell_address: str, value: str, sheet_name: str = None) -> Dict[str, Any]:
+        """Set the value of a cell in a Calc spreadsheet"""
+        # Try numeric conversion
+        try:
+            numeric = float(value)
+            return self.uno_bridge.set_cell_value(sheet_name, cell_address, numeric)
+        except ValueError:
+            return self.uno_bridge.set_cell_value(sheet_name, cell_address, value)
+
+    def get_cell_range_live(self, range_address: str, sheet_name: str = None) -> Dict[str, Any]:
+        """Get a range of cells as a 2D array"""
+        return self.uno_bridge.get_cell_range(sheet_name, range_address)
+
+    def list_sheets_live(self) -> Dict[str, Any]:
+        """List all sheet names"""
+        return self.uno_bridge.list_sheets()
 
 
 # Global instance

@@ -20,10 +20,11 @@ Or configure in Claude Code:
 """
 
 import httpx
+import os
 from fastmcp import FastMCP
 
 # LibreOffice HTTP API endpoint
-LIBREOFFICE_URL = "http://localhost:8765"
+LIBREOFFICE_URL = os.environ.get("LIBREOFFICE_URL", "http://localhost:8765")
 
 # Create the MCP server
 mcp = FastMCP("LibreOffice")
@@ -46,13 +47,19 @@ def call_libreoffice(path: str, method: str = "GET", data: dict = None) -> dict:
 
 # =============================================================================
 # CONSOLIDATED TOOL 1: document
-# Actions: create, info, list, content, status
+# Actions: create, info, list, content, status, styles,
+#          create_style, edit_style, delete_style, style_properties
 # =============================================================================
 
 @mcp.tool
-def document(action: str, doc_type: str = "writer") -> dict:
+def document(action: str, doc_type: str = "writer",
+             style_name: str = None, parent_style: str = None,
+             font_name: str = None, font_size: float = None,
+             bold: bool = None, italic: bool = None,
+             underline: bool = None, alignment: str = None) -> dict:
     """
-    Manage LibreOffice documents - create, get info, list, get content, or check status.
+    Manage LibreOffice documents - create, get info, list, content, status,
+    paragraph styles (list, create, edit, delete).
 
     Args:
         action: The operation to perform. Options:
@@ -61,7 +68,20 @@ def document(action: str, doc_type: str = "writer") -> dict:
             - "list": List all open documents
             - "content": Get full text content of active document
             - "status": Check LibreOffice MCP server health
+            - "styles": List all available paragraph styles in the active document
+            - "create_style": Create a new paragraph style (requires style_name)
+            - "edit_style": Modify an existing paragraph style (requires style_name)
+            - "delete_style": Delete a paragraph style (requires style_name)
+            - "style_properties": Get detailed properties of a named style (requires style_name)
         doc_type: Type of document for "create" action. Options: "writer", "calc", "impress", "draw"
+        style_name: Style name for create_style / edit_style / delete_style actions
+        parent_style: Parent style for create_style / edit_style (default: "Standard")
+        font_name: Font family for create_style / edit_style
+        font_size: Font size in points for create_style / edit_style
+        bold: Bold weight for create_style / edit_style
+        italic: Italic posture for create_style / edit_style
+        underline: Underline for create_style / edit_style
+        alignment: "left", "right", "center", or "justify" for create_style / edit_style
 
     Returns:
         Result based on action performed
@@ -76,8 +96,48 @@ def document(action: str, doc_type: str = "writer") -> dict:
         return call_libreoffice("/tools/get_text_content_live", "POST", {})
     elif action == "status":
         return call_libreoffice("/health")
+    elif action == "styles":
+        return call_libreoffice("/tools/list_paragraph_styles_live", "POST", {})
+    elif action == "create_style":
+        if style_name is None:
+            return {"error": "Action 'create_style' requires parameter 'style_name'"}
+        data = {"style_name": style_name}
+        if parent_style:
+            data["parent_style"] = parent_style
+        if font_name: data["font_name"] = font_name
+        if font_size is not None: data["font_size"] = font_size
+        if bold is not None: data["bold"] = bold
+        if italic is not None: data["italic"] = italic
+        if underline is not None: data["underline"] = underline
+        if alignment: data["alignment"] = alignment
+        return call_libreoffice("/tools/create_paragraph_style_live", "POST", data)
+    elif action == "edit_style":
+        if style_name is None:
+            return {"error": "Action 'edit_style' requires parameter 'style_name'"}
+        data = {"style_name": style_name}
+        if parent_style: data["parent_style"] = parent_style
+        if font_name: data["font_name"] = font_name
+        if font_size is not None: data["font_size"] = font_size
+        if bold is not None: data["bold"] = bold
+        if italic is not None: data["italic"] = italic
+        if underline is not None: data["underline"] = underline
+        if alignment: data["alignment"] = alignment
+        return call_libreoffice("/tools/edit_paragraph_style_live", "POST", data)
+    elif action == "delete_style":
+        if style_name is None:
+            return {"error": "Action 'delete_style' requires parameter 'style_name'"}
+        return call_libreoffice("/tools/delete_paragraph_style_live", "POST",
+                                {"style_name": style_name})
+    elif action == "style_properties":
+        if style_name is None:
+            return {"error": "Action 'style_properties' requires parameter 'style_name'"}
+        return call_libreoffice("/tools/get_style_properties_live", "POST",
+                                {"style_name": style_name})
     else:
-        return {"error": f"Invalid action '{action}'", "valid_actions": ["create", "info", "list", "content", "status"]}
+        return {"error": f"Invalid action '{action}'",
+                "valid_actions": ["create", "info", "list", "content", "status",
+                                   "styles", "create_style", "edit_style", "delete_style",
+                                   "style_properties"]}
 
 
 # =============================================================================
@@ -356,25 +416,30 @@ def save(action: str, file_path: str = None, export_format: str = "pdf") -> dict
 
 # =============================================================================
 # CONSOLIDATED TOOL 9: text
-# Actions: insert, format
+# Actions: insert, format, style
 # =============================================================================
 
 @mcp.tool
 def text(action: str, content: str = None, bold: bool = None, italic: bool = None,
-         underline: bool = None, font_size: int = None, font_name: str = None) -> dict:
+         underline: bool = None, font_size: int = None, font_name: str = None,
+         style_name: str = None, paragraph_n: int = None) -> dict:
     """
-    Insert and format text in the document.
+    Insert, format text, or apply paragraph styles in the document.
 
     Args:
         action: The operation to perform. Options:
             - "insert": Insert text at cursor position (requires content)
             - "format": Apply formatting to selected text (use formatting params)
+            - "style": Apply a paragraph style (e.g. "Heading 1") to selected text
+              or a specific paragraph (use style_name + optional paragraph_n)
         content: Text to insert for "insert" action
         bold: Set bold formatting (True/False) for "format" action
         italic: Set italic formatting (True/False) for "format" action
         underline: Set underline formatting (True/False) for "format" action
         font_size: Font size in points for "format" action
         font_name: Font family name for "format" action
+        style_name: Name of paragraph style for "style" action (e.g. "Heading 1", "Heading 2", "Title")
+        paragraph_n: Optional paragraph number (1-indexed) to target with "style" action directly
 
     Returns:
         Result with success status
@@ -396,9 +461,22 @@ def text(action: str, content: str = None, bold: bool = None, italic: bool = Non
         if font_name is not None:
             formatting["font_name"] = font_name
         return call_libreoffice("/tools/format_text_live", "POST", {"formatting": formatting})
+    elif action == "style":
+        if style_name is None:
+            return {"error": "Action 'style' requires parameter 'style_name' (e.g. 'Heading 1', 'Heading 2')"}
+        data = {"style_name": style_name}
+        if paragraph_n is not None:
+            data["paragraph_n"] = paragraph_n
+        return call_libreoffice("/tools/format_paragraph_live", "POST", data)
     else:
-        return {"error": f"Invalid action '{action}'", "valid_actions": ["insert", "format"]}
+        return {"error": f"Invalid action '{action}'", "valid_actions": ["insert", "format", "style"]}
 
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    if transport == "sse":
+        host = os.environ.get("MCP_HOST", "127.0.0.1")
+        port = int(os.environ.get("MCP_PORT", "8766"))
+        mcp.run(transport="sse", host=host, port=port)
+    else:
+        mcp.run()
