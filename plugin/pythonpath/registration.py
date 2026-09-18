@@ -61,6 +61,18 @@ def _start_server():
             _ai_interface = ai_interface.start_ai_interface(port=8765, host="localhost")
             _server_started = True
             logger.info("MCP server started successfully on http://localhost:8765")
+            logger.info("DEBUG: status right after start: %s", _ai_interface.get_status())
+
+            def _late_check():
+                try:
+                    import time
+                    time.sleep(5)
+                    logger.info("DEBUG late-check: status=%s", _ai_interface.get_status())
+                    logger.info("DEBUG late-check: threads=%s",
+                                [t.name for t in threading.enumerate()])
+                except BaseException:
+                    logger.error("DEBUG late-check failed: %s", traceback.format_exc())
+            threading.Thread(target=_late_check, daemon=True).start()
 
         except Exception as e:
             logger.error(f"Failed to start server: {e}")
@@ -95,7 +107,7 @@ class MCPProtocolHandler(unohelper.Base, XServiceInfo, XDispatchProvider, XDispa
     def __init__(self, ctx):
         self.ctx = ctx
         self.frame = None
-        logger.info("MCPProtocolHandler.__init__ called, ctx=%s", ctx)
+        logger.info("MCPProtocolHandler.__init__ called; context: %s", type(ctx).__name__)
 
     # XServiceInfo
     def getImplementationName(self):

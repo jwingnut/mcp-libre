@@ -12,7 +12,7 @@ A comprehensive Model Context Protocol (MCP) server that provides tools and reso
 - **Native Integration**: Embedded MCP server directly in LibreOffice
 - **Real-time Editing**: Live document manipulation with instant visual feedback
 - **Performance**: 10x faster than external server (direct UNO API access)
-- **9 Consolidated Tools**: Reduced from 32 individual tools for better UX
+- **10 Consolidated Tools**: Reduced from 36 individual tools for better UX
 - **Track Changes Support**: Full revision tracking awareness
 - **Multi-document**: Work with all open LibreOffice documents
 - **HTTP API**: External AI assistant access via localhost:8765
@@ -26,9 +26,9 @@ A comprehensive Model Context Protocol (MCP) server that provides tools and reso
 - **Comments**: Add and retrieve document annotations
 - **Track Changes**: Enable, disable, list, accept/reject revisions
 
-## 🔧 9 Consolidated MCP Tools
+## 🔧 10 Consolidated MCP Tools
 
-The MCP interface provides 9 logical tool groups (consolidated from 32 individual tools):
+The MCP interface provides 10 logical tool groups (consolidated from 36 individual tools):
 
 | Tool | Actions | Description |
 |------|---------|-------------|
@@ -41,6 +41,7 @@ The MCP interface provides 9 logical tool groups (consolidated from 32 individua
 | `comments` | list, add | Comment management |
 | `save` | save, export | Save/export documents |
 | `text` | insert, format | Text insertion and formatting |
+| `spreadsheet` | list_sheets, get_cell, set_cell, get_range, rename, duplicate, delete | Calc cell and sheet access |
 
 See [docs/TOOL_REFERENCE.md](docs/TOOL_REFERENCE.md) for complete documentation.
 

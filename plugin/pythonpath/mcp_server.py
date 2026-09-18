@@ -726,6 +726,83 @@ class LibreOfficeMCPServer:
             "handler": self.get_cell_range_live
         }
 
+        self.tools["format_cell_range_live"] = {
+            "description": "Format a range of cells in a Calc spreadsheet (e.g., 'A1:K11'). Supports bold, italic, underline, font_size, font_name, background_color, border.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_address": {
+                        "type": "string",
+                        "description": "Range like 'A1:K11' or 'Sheet1.A1:K11'"
+                    },
+                    "formatting": {
+                        "type": "object",
+                        "description": "Formatting options: bold (bool), italic (bool), underline (bool), font_size (int), font_name (str), background_color (int, RGB), border (bool)"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet name (optional)"
+                    }
+                },
+                "required": ["range_address", "formatting"]
+            },
+            "handler": self.format_cell_range_live
+        }
+
+        self.tools["set_cell_range_live"] = {
+            "description": "Write a 2D array of values to a cell range in one operation (e.g., 'A1:C10'). Numbers become numeric values; everything else is text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_address": {
+                        "type": "string",
+                        "description": "Target range like 'A1:C10' or 'Sheet1.A1:C10'"
+                    },
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {"type": ["number", "string"]}
+                        },
+                        "description": "2D array of rows (list of lists). Length and width must not exceed the target range."
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet name (optional)"
+                    }
+                },
+                "required": ["range_address", "data"]
+            },
+            "handler": self.set_cell_range_live
+        }
+
+        self.tools["merge_cells_live"] = {
+            "description": "Merge a range of cells in a Calc spreadsheet (e.g., 'A1:L1'). Optionally center the content (center=True). Use unmerge=True to split.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_address": {
+                        "type": "string",
+                        "description": "Range to merge like 'A1:L1' or 'Sheet1.A1:L1'"
+                    },
+                    "unmerge": {
+                        "type": "boolean",
+                        "description": "Unmerge the range instead of merging (default: False)"
+                    },
+                    "center": {
+                        "type": "boolean",
+                        "description": "Horizontally center content after merge (default: False)"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sheet name (optional)"
+                    }
+                },
+                "required": ["range_address"]
+            },
+            "handler": self.merge_cells_live
+        }
+
         self.tools["list_sheets_live"] = {
             "description": "List all sheet names in the current Calc document",
             "parameters": {
@@ -733,6 +810,63 @@ class LibreOfficeMCPServer:
                 "properties": {}
             },
             "handler": self.list_sheets_live
+        }
+
+        self.tools["rename_sheet_live"] = {
+            "description": "Rename a sheet in the current Calc document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Current sheet name"
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New sheet name"
+                    }
+                },
+                "required": ["sheet_name", "new_name"]
+            },
+            "handler": self.rename_sheet_live
+        }
+
+        self.tools["duplicate_sheet_live"] = {
+            "description": "Duplicate a sheet in the current Calc document (copies contents and formatting)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Name of the sheet to duplicate"
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "Name for the new sheet"
+                    },
+                    "position": {
+                        "type": "integer",
+                        "description": "0-based index where the new sheet is inserted (optional; default: end)"
+                    }
+                },
+                "required": ["sheet_name", "new_name"]
+            },
+            "handler": self.duplicate_sheet_live
+        }
+
+        self.tools["delete_sheet_live"] = {
+            "description": "Delete a sheet from the current Calc document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Name of the sheet to delete"
+                    }
+                },
+                "required": ["sheet_name"]
+            },
+            "handler": self.delete_sheet_live
         }
 
         logger.info(f"Registered {len(self.tools)} MCP tools")
@@ -1028,9 +1162,37 @@ class LibreOfficeMCPServer:
         """Get a range of cells as a 2D array"""
         return self.uno_bridge.get_cell_range(sheet_name, range_address)
 
+    def format_cell_range_live(self, range_address: str, formatting: Dict[str, Any],
+                               sheet_name: str = None) -> Dict[str, Any]:
+        """Format a range of cells (bold, italic, underline, font_size, font_name, background_color, border)"""
+        return self.uno_bridge.format_cell_range(range_address, formatting, sheet_name)
+
+    def set_cell_range_live(self, range_address: str, data: List[List[Any]],
+                            sheet_name: str = None) -> Dict[str, Any]:
+        """Write a 2D array of values to a cell range in one operation"""
+        return self.uno_bridge.set_cell_range(range_address, data, sheet_name)
+
+    def merge_cells_live(self, range_address: str, unmerge: bool = False,
+                         center: bool = False, sheet_name: str = None) -> Dict[str, Any]:
+        """Merge (or unmerge) a range of cells in a spreadsheet"""
+        return self.uno_bridge.merge_cells(range_address, unmerge, center, sheet_name)
+
     def list_sheets_live(self) -> Dict[str, Any]:
         """List all sheet names"""
         return self.uno_bridge.list_sheets()
+
+    def rename_sheet_live(self, sheet_name: str, new_name: str) -> Dict[str, Any]:
+        """Rename a sheet"""
+        return self.uno_bridge.rename_sheet(sheet_name, new_name)
+
+    def duplicate_sheet_live(self, sheet_name: Optional[str], new_name: Optional[str],
+                             position: Optional[int] = None) -> Dict[str, Any]:
+        """Duplicate a sheet"""
+        return self.uno_bridge.duplicate_sheet(sheet_name, new_name, position)
+
+    def delete_sheet_live(self, sheet_name: str) -> Dict[str, Any]:
+        """Delete a sheet"""
+        return self.uno_bridge.delete_sheet(sheet_name)
 
 
 # Global instance

@@ -2511,6 +2511,140 @@ class UNOBridge:
             logger.error(f"get_cell_range failed: {e}")
             return {"success": False, "error": str(e)}
 
+    def format_cell_range(self, range_address: str, formatting: Dict[str, Any],
+                          sheet_name: Optional[str] = None, doc: Any = None) -> Dict[str, Any]:
+        """Format a cell range (e.g., 'A1:K11'). Supports bold, italic,
+        underline, font_size, font_name, background_color, and border."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+            if not range_address:
+                return {"success": False, "error": "range_address is required"}
+
+            if "." in range_address and not sheet_name:
+                sheet_name, range_address = range_address.split(".", 1)
+
+            sheet = self._get_sheet(doc, sheet_name)
+            cell_range = sheet.getCellRangeByName(range_address)
+
+            if "bold" in formatting:
+                cell_range.CharWeight = 150.0 if formatting["bold"] else 100.0
+            if "italic" in formatting:
+                cell_range.CharPosture = 2 if formatting["italic"] else 0
+            if "underline" in formatting:
+                cell_range.CharUnderline = 1 if formatting["underline"] else 0
+            if "font_size" in formatting:
+                cell_range.CharHeight = float(formatting["font_size"])
+            if "font_name" in formatting:
+                cell_range.CharFontName = str(formatting["font_name"])
+            if "background_color" in formatting:
+                cell_range.CellBackColor = int(formatting["background_color"])
+            if "border" in formatting and formatting["border"]:
+                border_line = uno.createUnoStruct(
+                    "com.sun.star.table.BorderLine2")
+                border_line.Color = 0
+                border_line.LineStyle = 0
+                border_line.LineWidth = 10
+                border_line.OuterLineWidth = 10
+                cell_range.TopBorder = border_line
+                cell_range.BottomBorder = border_line
+                cell_range.LeftBorder = border_line
+                cell_range.RightBorder = border_line
+            elif "border" in formatting:
+                no_border = uno.createUnoStruct(
+                    "com.sun.star.table.BorderLine2")
+                cell_range.TopBorder = no_border
+                cell_range.BottomBorder = no_border
+                cell_range.LeftBorder = no_border
+                cell_range.RightBorder = no_border
+
+            logger.info("Formatted range %s on sheet %s", range_address, sheet.getName())
+            return {"success": True, "range": range_address,
+                    "sheet": sheet.getName(), "formatting": formatting}
+        except Exception as e:
+            logging.error(f"format_cell_range failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def set_cell_range(self, range_address: str, data: List[List[Any]],
+                       sheet_name: Optional[str] = None, doc: Any = None) -> Dict[str, Any]:
+        """Write a 2D array of values to a cell range (e.g., 'A1:C10').
+        Numbers are written as numeric values; other values as strings."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+            if not range_address:
+                return {"success": False, "error": "range_address is required"}
+            if not isinstance(data, list) or not data:
+                return {"success": False, "error": "data must be a non-empty 2D list"}
+
+            if "." in range_address and not sheet_name:
+                sheet_name, range_address = range_address.split(".", 1)
+
+            sheet = self._get_sheet(doc, sheet_name)
+            cell_range = sheet.getCellRangeByName(range_address)
+
+            # Build a tuple-of-tuples of numeric values where possible; pyuno
+            # coerces float/int to double and everything else must be a string.
+            rows = len(data)
+            cols = max(len(r) for r in data) if data else 0
+            if cell_range.Columns.Count < cols or cell_range.Rows.Count < rows:
+                return {"success": False,
+                        "error": f"range {range_address} ({cell_range.Rows.Count}x{cell_range.Columns.Count}) "
+                                 f"too small for {rows}x{cols} data"}
+            values = tuple(
+                tuple(float(c) if isinstance(c, (int, float)) and not isinstance(c, bool)
+                      else str(c) for c in r)
+                for r in data)
+            cell_range.setDataArray(values)
+            logger.info("Set %d x %d values on range %s", rows, cols, range_address)
+            return {"success": True, "range": range_address, "sheet": sheet.getName(),
+                    "rows": rows, "cols": cols}
+        except Exception as e:
+            logging.error(f"set_cell_range failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def merge_cells(self, range_address: str, unmerge: bool = False,
+                    center: bool = False,
+                    sheet_name: Optional[str] = None, doc: Any = None) -> Dict[str, Any]:
+        """Merge (or unmerge) a range of cells (e.g., 'A1:L1'). Optionally center content."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+            if not range_address:
+                return {"success": False, "error": "range_address is required"}
+
+            if "." in range_address and not sheet_name:
+                sheet_name, range_address = range_address.split(".", 1)
+
+            sheet = self._get_sheet(doc, sheet_name)
+            cell_range = sheet.getCellRangeByName(range_address)
+            if unmerge:
+                cell_range.merge(False)
+                what = "Unmerged"
+            else:
+                cell_range.merge(True)
+                if center:
+                    cell_range.HoriJustify = 2  # CellHoriJustify.CENTER
+                what = "Merged"
+            logger.info("%s range %s", what, range_address)
+            return {"success": True, "range": range_address,
+                    "sheet": sheet.getName(), "merged": not unmerge}
+        except Exception as e:
+            logging.error(f"merge_cells failed: {e}")
+            return {"success": False, "error": str(e)}
+
     def list_sheets(self, doc: Any = None) -> Dict[str, Any]:
         """List all sheet names in the document."""
         try:
@@ -2542,6 +2676,91 @@ class UNOBridge:
         except Exception as e:
             logger.error(f"get_active_sheet_name failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def rename_sheet(self, sheet_name: Optional[str], new_name: Optional[str],
+                     doc: Any = None) -> Dict[str, Any]:
+        """Rename a sheet in the document."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+            if not sheet_name or not new_name:
+                return {"success": False, "error": "sheet_name and new_name are required"}
+
+            sheets = doc.getSheets()
+            if new_name != sheet_name and sheets.hasByName(new_name):
+                return {"success": False, "error": f"Sheet '{new_name}' already exists"}
+            sheet = sheets.getByName(sheet_name)
+            sheet.setName(new_name)
+            return {"success": True, "old_name": sheet_name, "new_name": new_name}
+        except Exception as e:
+            detail = getattr(e, "Message", None) or str(e) or repr(e)
+            logger.error(f"rename_sheet failed: {detail} ({e!r})")
+            return {"success": False, "error": detail}
+
+    def duplicate_sheet(self, sheet_name: Optional[str], new_name: Optional[str],
+                        position: Optional[int] = None,
+                        doc: Any = None) -> Dict[str, Any]:
+        """Duplicate a sheet (contents and formatting)."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+            if not sheet_name or not new_name:
+                return {"success": False, "error": "sheet_name and new_name are required"}
+
+            sheets = doc.getSheets()
+            if not sheets.hasByName(sheet_name):
+                return {"success": False, "error": f"Sheet '{sheet_name}' not found"}
+            if sheets.hasByName(new_name):
+                return {"success": False, "error": f"Sheet '{new_name}' already exists"}
+
+            if position is None:
+                position = sheets.getCount()
+            position = max(0, min(position, sheets.getCount()))
+
+            sheets.copyByName(sheet_name, new_name, position)
+            return {"success": True, "source": sheet_name,
+                    "new_name": new_name, "position": position}
+        except Exception as e:
+            import traceback as _tb
+            logger.error("duplicate_sheet failed: %r (%s)",
+                         e, type(e).__name__)
+            logger.error(_tb.format_exc())
+            detail = getattr(e, "Message", None) or str(e) or type(e).__name__
+            return {"success": False, "error": detail}
+
+    def delete_sheet(self, sheet_name: Optional[str],
+                     doc: Any = None) -> Dict[str, Any]:
+        """Delete a sheet from the document."""
+        try:
+            if doc is None:
+                doc = self.get_active_document()
+            if not doc:
+                return {"success": False, "error": "No active document"}
+            if not self._is_calc(doc):
+                return {"success": False, "error": "Active document is not a spreadsheet"}
+            if not sheet_name:
+                return {"success": False, "error": "sheet_name is required"}
+
+            sheets = doc.getSheets()
+            if not sheets.hasByName(sheet_name):
+                return {"success": False, "error": f"Sheet '{sheet_name}' not found"}
+            if sheets.getCount() <= 1:
+                return {"success": False, "error": "Cannot delete the last sheet"}
+
+            sheets.removeByName(sheet_name)
+            return {"success": True, "deleted": sheet_name}
+        except Exception as e:
+            detail = getattr(e, "Message", None) or str(e) or repr(e)
+            logger.error(f"delete_sheet failed: {detail} ({e!r})")
+            return {"success": False, "error": detail}
 
     def _is_calc(self, doc: Any) -> bool:
         """Check if document is a Calc spreadsheet."""

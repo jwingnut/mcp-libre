@@ -472,6 +472,116 @@ def text(action: str, content: str = None, bold: bool = None, italic: bool = Non
         return {"error": f"Invalid action '{action}'", "valid_actions": ["insert", "format", "style"]}
 
 
+# =============================================================================
+# CONSOLIDATED TOOL 10: spreadsheet
+# Actions: list_sheets, get_cell, set_cell, get_range
+# =============================================================================
+
+@mcp.tool
+def spreadsheet(action: str, sheet_name: str = None, cell_address: str = None,
+                value: str = None, range_address: str = None, new_name: str = None,
+                position: int = None, data: list = None, formatting: dict = None,
+                unmerge: bool = False, center: bool = False) -> dict:
+    """
+    Access Calc spreadsheet cells and sheets.
+
+    Args:
+        action: The operation to perform. Options:
+            - "list_sheets": List all sheet names and the active sheet
+            - "get_cell": Get the value of a single cell (requires cell_address)
+            - "set_cell": Set the value of a single cell (requires cell_address, value)
+            - "get_range": Get a rectangular range of cells as a 2D array (requires range_address)
+            - "set_range": Write a 2D array of values to a range (requires range_address, data)
+            - "format_range": Format a range (requires range_address, formatting)
+            - "merge": Merge a range (requires range_address; optional center=True, unmerge=True)
+            - "rename": Rename a sheet (requires sheet_name, new_name)
+            - "duplicate": Duplicate a sheet with contents (requires sheet_name, new_name; optional position)
+            - "delete": Delete a sheet (requires sheet_name; cannot delete the last sheet)
+        sheet_name: Sheet name (optional for cell ops; uses active sheet if omitted.
+                    Source sheet for rename/duplicate)
+        cell_address: Cell address like 'A1', 'B5', or 'Sheet1.A1'
+        value: Value to set for "set_cell" (number or text)
+        range_address: Range like 'A1:F20' or 'Sheet1.A1:F20'
+        data: 2D array (list of rows) for "set_range"
+        formatting: Format options for "format_range": bold (bool), italic (bool),
+                    underline (bool), font_size (int), font_name (str),
+                    background_color (int, RGB), border (bool)
+        new_name: New sheet name for "rename" and "duplicate"
+        position: 0-based insertion index for "duplicate" (default: end of sheet list)
+        unmerge: Split a previously merged range for "merge" action
+        center: Horizontally center content for "merge" action
+
+    Returns:
+        Result based on action performed
+    """
+    if action == "list_sheets":
+        return call_libreoffice("/tools/list_sheets_live", "POST", {})
+    elif action == "get_cell":
+        if cell_address is None:
+            return {"error": "Action 'get_cell' requires parameter 'cell_address'"}
+        data = {"cell_address": cell_address}
+        if sheet_name:
+            data["sheet_name"] = sheet_name
+        return call_libreoffice("/tools/get_cell_value_live", "POST", data)
+    elif action == "set_cell":
+        if cell_address is None or value is None:
+            return {"error": "Action 'set_cell' requires parameters 'cell_address' and 'value'"}
+        data = {"cell_address": cell_address, "value": value}
+        if sheet_name:
+            data["sheet_name"] = sheet_name
+        return call_libreoffice("/tools/set_cell_value_live", "POST", data)
+    elif action == "get_range":
+        if range_address is None:
+            return {"error": "Action 'get_range' requires parameter 'range_address'"}
+        data = {"range_address": range_address}
+        if sheet_name:
+            data["sheet_name"] = sheet_name
+        return call_libreoffice("/tools/get_cell_range_live", "POST", data)
+    elif action == "set_range":
+        if range_address is None or data is None:
+            return {"error": "Action 'set_range' requires parameters 'range_address' and 'data'"}
+        body = {"range_address": range_address, "data": data}
+        if sheet_name:
+            body["sheet_name"] = sheet_name
+        return call_libreoffice("/tools/set_cell_range_live", "POST", body)
+    elif action == "format_range":
+        if range_address is None or formatting is None:
+            return {"error": "Action 'format_range' requires parameters 'range_address' and 'formatting'"}
+        body = {"range_address": range_address, "formatting": formatting}
+        if sheet_name:
+            body["sheet_name"] = sheet_name
+        return call_libreoffice("/tools/format_cell_range_live", "POST", body)
+    elif action == "merge":
+        if range_address is None:
+            return {"error": "Action 'merge' requires parameter 'range_address'"}
+        body = {"range_address": range_address, "unmerge": unmerge, "center": center}
+        if sheet_name:
+            body["sheet_name"] = sheet_name
+        return call_libreoffice("/tools/merge_cells_live", "POST", body)
+    elif action == "rename":
+        if sheet_name is None or new_name is None:
+            return {"error": "Action 'rename' requires parameters 'sheet_name' and 'new_name'"}
+        return call_libreoffice("/tools/rename_sheet_live", "POST",
+                                {"sheet_name": sheet_name, "new_name": new_name})
+    elif action == "duplicate":
+        if sheet_name is None or new_name is None:
+            return {"error": "Action 'duplicate' requires parameters 'sheet_name' and 'new_name'"}
+        data = {"sheet_name": sheet_name, "new_name": new_name}
+        if position is not None:
+            data["position"] = position
+        return call_libreoffice("/tools/duplicate_sheet_live", "POST", data)
+    elif action == "delete":
+        if sheet_name is None:
+            return {"error": "Action 'delete' requires parameter 'sheet_name'"}
+        return call_libreoffice("/tools/delete_sheet_live", "POST",
+                                {"sheet_name": sheet_name})
+    else:
+        return {"error": f"Invalid action '{action}'",
+                "valid_actions": ["list_sheets", "get_cell", "set_cell", "get_range",
+                                  "set_range", "format_range", "merge",
+                                  "rename", "duplicate", "delete"]}
+
+
 if __name__ == "__main__":
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "sse":

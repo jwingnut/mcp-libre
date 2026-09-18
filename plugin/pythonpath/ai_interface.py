@@ -208,12 +208,17 @@ class AIInterface:
     
     def _run_server(self):
         """Run the HTTP server"""
+        import traceback as _tb
         try:
             logger.info(f"HTTP server listening on {self.host}:{self.port}")
+            logger.info("DEBUG: threads at serve_forever start: %s",
+                        [t.name for t in threading.enumerate()])
             self.server.serve_forever()
-        except Exception as e:
-            if self.running:  # Only log if we're supposed to be running
-                logger.error(f"HTTP server error: {e}")
+        except BaseException as e:
+            logger.error("HTTP server error (BaseException): %r", e)
+            logger.error(_tb.format_exc())
+            logger.info("DEBUG: threads at serve_forever exit: %s",
+                        [t.name for t in threading.enumerate()])
         finally:
             self.running = False
     
