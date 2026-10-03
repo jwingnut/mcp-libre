@@ -1,0 +1,28 @@
+{
+  "name": "zetajs-mcp-bridge",
+  "version": "1.0.0",
+  "description": "Zero-installation WebAssembly LibreOffice bridge for mcp-libre using ZetaJS and UNO",
+  "main": "server.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "start:headless": "node server.mjs --headless",
+    "start:browser": "node server.mjs --browser",
+    "mcp": "node mcp_stdio_server.mjs",
+    "mcp:browser": "HEADLESS=false node mcp_stdio_server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "ws": "^8.18.0",
+    "zod": "^4.6.5"
+  },
+  "keywords": [
+    "mcp",
+    "libreoffice",
+    "zetajs",
+    "wasm",
+    "uno"
+  ],
+  "author": "mcp-libre",
+  "license": "MIT"
+}

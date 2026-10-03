@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>mcp-libre + ZetaJS Wasm Bridge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge {
+      background: rgba(37, 99, 235, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(37, 99, 235, 0.4);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-bar {
+      display: flex;
+      gap: 16px;
+      font-size: 13px;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .dot.green { background: var(--success); box-shadow: 0 0 8px rgba(16, 185, 129, 0.6); }
+    .dot.yellow { background: var(--warning); box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+    .dot.red { background: var(--danger); }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      overflow: hidden;
+    }
+    .canvas-container {
+      position: relative;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #qtcanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+    }
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 10;
+      transition: opacity 0.3s;
+    }
+    .spinner {
+      border: 6px solid #334155;
+      border-top: 6px solid #2563eb;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    .sidebar {
+      background: var(--card-bg);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .quick-actions {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    button {
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    button:hover { background: #475569; }
+    button.primary { background: var(--accent); }
+    button.primary:hover { background: #1d4ed8; }
+
+    .log-container {
+      flex: 1;
+      padding: 14px 18px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .log-entry {
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      word-break: break-all;
+    }
+    .log-time { color: var(--text-muted); margin-right: 6px; }
+    .log-tag { font-weight: bold; margin-right: 6px; }
+    .log-tag.mcp { color: #60a5fa; }
+    .log-tag.uno { color: #34d399; }
+    .log-tag.sys { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h2>mcp-libre</h2>
+      <span class="badge">ZetaJS Wasm Bridge</span>
+      <span style="font-size: 13px; color: var(--text-muted);">Port 8765</span>
+    </div>
+    <div class="status-bar">
+      <div class="status-item">
+        <div id="ws-dot" class="dot yellow"></div>
+        <span id="ws-text">Bridge Connecting...</span>
+      </div>
+      <div class="status-item">
+        <div id="wasm-dot" class="dot yellow"></div>
+        <span id="wasm-text">Loading Wasm Engine...</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="canvas-container">
+      <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <h3>Booting ZetaOffice WebAssembly...</h3>
+        <p style="color: var(--text-muted); font-size: 13px;">Downloading runtime & initializing UNO ServiceManager</p>
+      </div>
+      <canvas id="qtcanvas" contenteditable="true"></canvas>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>MCP Live Activity</span>
+        <button onclick="clearLog()">Clear</button>
+      </div>
+      <div class="quick-actions">
+        <button class="primary" onclick="testInsertText()">Test Insert</button>
+        <button onclick="testGetInfo()">Get Info</button>
+        <button onclick="testGetContent()">Get Content</button>
+      </div>
+      <div id="log" class="log-container">
+        <div class="log-entry">
+          <span class="log-time">00:00:00</span>
+          <span class="log-tag sys">SYS</span>
+          Ready to bridge HTTP:8765 to in-browser UNO API.
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module">
+    import { ZetaHelperMain } from './zetajs/zetaHelper.js';
+
+    const logContainer = document.getElementById('log');
+    const wsDot = document.getElementById('ws-dot');
+    const wsText = document.getElementById('ws-text');
+    const wasmDot = document.getElementById('wasm-dot');
+    const wasmText = document.getElementById('wasm-text');
+    const loadingOverlay = document.getElementById('loading');
+
+    function log(tag, type, message) {
+      const now = new Date().toTimeString().split(' ')[0];
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `<span class="log-time">${now}</span><span class="log-tag ${type}">${tag}</span> ${message}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // 1. Setup WebSocket to local Node server
+    let ws = null;
+    let zHM = null;
+
+    function connectWebSocket() {
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${wsProtocol}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        wsDot.className = 'dot green';
+        wsText.textContent = 'Bridge Connected';
+        log('WS', 'sys', 'WebSocket connected to Node.js MCP server');
+      };
+
+      ws.onclose = () => {
+        wsDot.className = 'dot red';
+        wsText.textContent = 'Bridge Offline';
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'mcp_request') {
+            log('MCP', 'mcp', `Incoming HTTP call: <b>${msg.tool}</b>`);
+            // Forward to Wasm worker thread
+            if (zHM && zHM.thrPort) {
+              zHM.thrPort.postMessage({
+                cmd: 'mcp_exec',
+                id: msg.id,
+                tool: msg.tool,
+                params: msg.params
+              });
+            } else {
+              ws.send(JSON.stringify({
+                type: 'mcp_response',
+                id: msg.id,
+                result: { success: false, error: 'ZetaJS Worker thread not ready' }
+              }));
+            }
+          }
+        } catch (e) {
+          console.error('Error handling WebSocket message:', e);
+        }
+      };
+    }
+
+    connectWebSocket();
+
+    // 2. Initialize ZetaOffice WebAssembly
+    try {
+      zHM = new ZetaHelperMain('office_thread.js', {
+        threadJsType: 'module',
+        wasmPkg: 'free'
+      });
+
+      zHM.start(() => {
+        console.log('[ZetaMain] Office initialized');
+        loadingOverlay.style.opacity = '0';
+        setTimeout(() => loadingOverlay.style.display = 'none', 300);
+        wasmDot.className = 'dot green';
+        wasmText.textContent = 'Wasm UNO Ready';
+        log('UNO', 'uno', 'LibreOffice Wasm booted successfully via ZetaJS');
+
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'ready', info: 'ZetaOffice Wasm Ready' }));
+        }
+
+        // Listen for replies from office_worker.js
+        const oldOnMessage = zHM.thrPort.onmessage;
+        zHM.thrPort.onmessage = (event) => {
+          const data = event.data;
+          if (data && data.cmd === 'mcp_reply') {
+            log('UNO', 'uno', `UNO tool execution finished (ID: ${data.id})`);
+            if (ws && ws.readyState === 1) {
+              ws.send(JSON.stringify({
+                type: 'mcp_response',
+                id: data.id,
+                result: data.result
+              }));
+            }
+            return;
+          } else if (data && data.cmd === 'mcp_ready') {
+            log('UNO', 'uno', data.info);
+            return;
+          }
+          if (oldOnMessage) {
+            try { oldOnMessage(event); } catch (e) { /* ignore other commands */ }
+          }
+        };
+      });
+    } catch (err) {
+      console.error('Failed to initialize ZetaJS:', err);
+      wasmDot.className = 'dot red';
+      wasmText.textContent = 'Wasm Error';
+      log('ERR', 'sys', err.message);
+    }
+
+    // Interactive helper functions
+    window.clearLog = () => { logContainer.innerHTML = ''; };
+
+    window.testInsertText = () => {
+      fetch('/tools/insert_text_live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `\n[Manual Test at ${new Date().toLocaleTimeString()}]: Hello from UI!\n` })
+      });
+    };
+
+    window.testGetInfo = () => {
+      fetch('/tools/get_document_info_live', { method: 'POST', body: '{}' })
+        .then(r => r.json())
+        .then(d => log('INFO', 'sys', JSON.stringify(d)));
+    };
+
+    window.testGetContent = () => {
+      fetch('/tools/get_text_content_live', { method: 'POST', body: '{}' })
+        .then(r => r.json())
+        .then(d => log('CONTENT', 'sys', d.content ? d.content.substring(0, 100) + '...' : JSON.stringify(d)));
+    };
+  </script>
+</body>
+</html>
